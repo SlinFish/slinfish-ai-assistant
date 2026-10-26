@@ -101,6 +101,41 @@ The logger constructs records from an allowlist: fixed event/provider/category/p
 
 `phase` distinguishes `request` (before response headers), `response_body` (headers received/body handling), and `response_validation` (JSON/completion/selection checks). A non-success status is classified immediately; cleanup does not wait for the rejected body. This is coarse evidence, not an upstream root-cause trace. No raw provider details are collected to resolve ambiguity.
 
+
+### Separate local HTTP field diagnostic CLI
+
+The local CLI at `scripts/gemini-http-diagnostic.js` is independent of the server's `AI_DIAGNOSTICS` logger. It is not imported by the application and has no public HTTP route. No environment variable enables this CLI automatically. Invoking it with no arguments returns `diagnostic_disabled` and makes no request, even if credentials are present.
+
+**Offline synthetic example — safe to run now, requires no credentials or provider access:**
+
+```sh
+printf '%s' '{"error":{"details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"generationConfig.thinkingConfig.thinkingLevel"}]}]}}' | node scripts/gemini-http-diagnostic.js --offline --status 400
+```
+
+Expected stdout:
+
+```json
+{"httpStatus":400,"category":"field_violations","fieldGroups":["thinking_config"]}
+```
+
+Offline mode accepts a numeric HTTP error status from 400–599 and reads stdin in memory, with no network request or credential access. Use synthetic fixtures; do not put real raw provider errors, keys or customer data in shell history or files. Its stdin deadline is two seconds.
+
+**Future controlled live command — requires separate user authorization before execution:**
+
+```sh
+node scripts/gemini-http-diagnostic.js --live-once
+```
+
+This command was implemented and tested with synthetic transport only. No live request has been authorized or executed for this task. It refuses live mode unless stdin, stdout and stderr are all interactive terminals, preventing ordinary redirected/captured live output. Run only in a private local terminal with recording/debug tracing disabled. The CLI itself opens no log files and writes no diagnostic files; it cannot control terminal recording or infrastructure logging outside the process.
+
+When separately authorized, live mode reads the existing server-side `GEMINI_API_KEY` environment binding. It does not prompt for or accept a key in command-line arguments, load credential files, or fall back to another key. Supply credentials through the existing secure environment mechanism, never an inline shell assignment or committed file. It uses the same fixed Gemini endpoint, header-only authentication, instruction, `MINIMAL` thinking, output schema and fictional Hospitality knowledge as the application, with the fixed question “What is check-in?”. It makes **at most one POST**, follows no redirects, and has no retries, tools, model substitutions or billing changes. Existing `AI_MODEL` validation and `AI_TIMEOUT_MS` bounds apply. Keep the project unbilled. The command does not call the app's public endpoints or expose diagnostics to them.
+
+Both modes buffer at most **32768 bytes** of error-body content, measured across all chunks after transport decoding. Oversized bodies are cancelled and discarded without parsing a prefix. Parsing also caps processing at 16 error details, 32 violations per detail, and 512 characters per field path. Only the exact `type.googleapis.com/google.rpc.BadRequest` type and its structured `fieldViolations` (or `field_violations`) are inspected. See [Google's official error-detail definitions](https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto). Free-form messages and descriptions are never parsed for field names.
+
+Output is exactly one JSON record containing only `httpStatus` (numeric or null), `category` (fixed code), and `fieldGroups` (sorted/deduplicated constants). Recognized request roots map to `thinking_config`, `response_schema`, `response_mime_type`, `max_output_tokens`, `system_instruction`, or `contents`. Raw paths, path suffixes, messages, descriptions, provider reason strings/metadata, headers, keys, stack traces, questions and business knowledge are never copied into output. Unknown paths are discarded. Missing/unknown structured details, malformed JSON/UTF-8, or oversized bodies return `no_safe_field_details`; the CLI does not guess the rejected field.
+
+Other fixed categories are `diagnostic_disabled`, `invalid_arguments`, `local_terminal_required`, `configuration_error`, `network_error`, `timeout`, `diagnostic_error`, and `http_success`. Successful HTTP bodies are cancelled without being read or displayed; `http_success` does **not** prove a valid grounded answer or resolution of the application's HTTP 400. Structured field groups are evidence supplied by upstream, not an independent proof of the provider or root cause. Process exit status is 0 for disabled/successful HTTP outcomes and 1 for all other outcomes, including the synthetic HTTP 400 example above. There is no raw-output or verbose mode.
+
 ### Gemini compatibility findings and remaining uncertainty
 
 Reported by the user (not rerun in this task): authentication and `GET /v1beta/models` work; metadata for `gemini-2.5-flash` succeeds; `gemini-3.8-flash` generation times out after 60 seconds; `gemini-2.5-flash` generation returns 404. The application still pins `gemini-3.8-flash`; no switch or live probe was performed. A model-list or model-metadata success does **not** prove that the same project/API version supports `generateContent` for that model. The 404 alone does not identify missing credentials or confirm a typo.
@@ -122,7 +157,7 @@ These diagnostics improve local visibility; they do not fix or confirm live Gemi
 - `src/chat.js`: orchestration and output checks. Only IDs in the selected business's FAQs are accepted; answers are the exact approved text, with scoped source IDs. Unknown IDs, uncertainty and failures return a fixed handoff. No model-generated prose is displayed.
 - `src/http.js`: routes, body limits, strict request validation, per-socket-IP rate limits, public asset allowlist, and safe errors. `server.js` is the startup entry point.
 - `public/app.js`: text-only rendering and generation checks that discard replies from a previous business selection. API keys and provider configuration never reach the browser.
-- `server.test.js`, `gemini.test.js`, `diagnostics.test.js`, and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact Google/OpenAI or need credentials.
+- `server.test.js`, `gemini.test.js`, `diagnostics.test.js`, `gemini-cli.test.js`, and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact Google/OpenAI or need credentials.
 
 Review knowledge changes as code. Add only business-approved facts and question variants. To answer new topics, add approved FAQ text; details/services/policies provide context but are not independently rendered as answers. Unapproved prices, hours, services, policies, or inventory must remain unavailable. Automated tests and human review should accompany knowledge updates.
 
