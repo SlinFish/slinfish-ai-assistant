@@ -43,8 +43,18 @@ test('Gemini uses official REST endpoint and header key with only scoped knowled
       assert.deepEqual(payload.contents, [{ role: 'user', parts: [{ text: 'Customer question' }] }]);
       assert.equal(Object.hasOwn(payload.generationConfig, 'candidateCount'), false, 'Gemini must not receive unsupported candidateCount');
       assert.equal(Object.hasOwn(payload.generationConfig, 'temperature'), false, 'Gemini must not receive deprecated temperature');
-      assert.equal(payload.generationConfig.responseMimeType, 'application/json');
-      assert.deepEqual(payload.generationConfig.responseSchema.properties.factId.enum, record.faqs.map(f => f.id));
+      assert.deepEqual(payload.generationConfig, {
+        maxOutputTokens: 1024,
+        thinkingConfig: { thinkingLevel: 'MINIMAL' },
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT', required: ['factId', 'confident'],
+          properties: {
+            factId: { type: 'STRING', nullable: true, enum: record.faqs.map(f => f.id) },
+            confident: { type: 'BOOLEAN' }
+          }
+        }
+      });
       assert.equal(payload.tools, undefined);
       assert.ok(!options.body.includes(config.apiKey));
       return complete({ factId: record.faqs[0].id, confident: true });

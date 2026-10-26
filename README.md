@@ -62,6 +62,13 @@ Free-tier availability and request/token quotas vary by project, account, region
 
 Google may use Free tier input/output to improve products under applicable terms. Review [Gemini API terms](https://ai.google.dev/gemini-api/terms) and data-use rules before live use; do not submit customer personal or confidential information. No conversations or contacts are persisted by this application. Local tests use synthetic responses and require no key, billing or provider calls.
 
+
+### Minimal thinking latency experiment
+
+The Gemini `generateContent` request explicitly sets `generationConfig.thinkingConfig.thinkingLevel` to **`"MINIMAL"`**. Google's [official SDK definitions](https://github.com/googleapis/js-genai/blob/0dd787c23d76139982d7acb01e3c99978f563007/src/types.ts) define these camelCase fields and the uppercase `MINIMAL` enum value. Google's [thinking guide](https://github.com/google-gemini/cookbook/blob/550674681574d7aa24304b8fa9b31234e241ed7e/quickstarts/Get_started_thinking.ipynb) documents minimal thinking for Gemini 3 Flash models and the thinking configuration for `generateContent`.
+
+This is an **unverified latency hypothesis, not a confirmed fix** for the reported 8-second application timeout or separate 60-second generation timeout. No live Gemini requests or latency measurements were performed for this change. Minimal thinking may reduce reasoning effort, but it does not guarantee response latency, availability, relevance, free-tier eligibility, or elimination of thinking tokens. The pinned model, native fetch endpoint, output-token ceiling, JSON schema, strict fact-ID validation, deadlines, diagnostics and handoff behavior remain unchanged. Demo mode stays the default. No retries, alternate models, Google Search, new dependencies, paid services or billing activation are introduced.
+
 ## Safe local diagnostics (opt-in)
 
 Enable only in a private local server terminal:

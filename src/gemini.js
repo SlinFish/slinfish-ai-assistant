@@ -11,6 +11,7 @@ export function geminiRequest(knowledge, message, config, instruction) {
       contents: [{ role: 'user', parts: [{ text: message }] }],
       generationConfig: {
         maxOutputTokens: 1024,
+        thinkingConfig: { thinkingLevel: 'MINIMAL' },
         responseMimeType: 'application/json',
         responseSchema: {
           type: 'OBJECT', required: ['factId', 'confident'],
