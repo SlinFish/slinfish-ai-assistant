@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isBusiness } from '../businesses.js';
 import { validateInquiry } from './validation.js';
+import { migrateAdminSchema, adminRepository } from '../admin/schema.js';
 const ROOT = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
 const APP_ID = 0x534c494e;
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -55,8 +56,9 @@ export function openInquiryStore(input) {
         ) STRICT;
         CREATE INDEX inquiries_business_created ON inquiries(business_id,created_at,id);
         PRAGMA application_id=${APP_ID}; PRAGMA user_version=1; COMMIT;`);
-    } else if (version !== 1 || appId !== APP_ID) throw new Error('Unsupported database');
+    } else if (![1, 2].includes(version) || appId !== APP_ID) throw new Error('Unsupported database');
     if (db.prepare("SELECT value FROM app_metadata WHERE key='realm'").get()?.value !== 'fictional-demo') throw new Error('Incorrect storage realm');
+    migrateAdminSchema(db);
     db.exec('PRAGMA journal_mode=WAL;');
     const insert = db.prepare(`INSERT INTO inquiries
       (id,business_id,name,contact,question,consent,status,created_at,updated_at,expires_at,version)
@@ -65,6 +67,7 @@ export function openInquiryStore(input) {
     const count = db.prepare('SELECT count(*) AS total FROM inquiries');
     let closed = false;
     return {
+      admin: adminRepository(db),
       save(value, now = Date.now()) {
         const inquiry = validateInquiry(value);
         const id = randomUUID();

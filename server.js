@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,7 @@ import { businesses, answer, isBusiness } from './src/businesses.js';
 import { validateInquiry, validText, RequestError } from './src/inquiries/validation.js';
 import { openInquiryStore } from './src/inquiries/sqlite.js';
 import { createLimiter } from './src/inquiries/rate-limit.js';
+import { createAdminAuth, adminOrigin, sessionCookie } from './src/admin/auth.js';
 export { businesses, answer } from './src/businesses.js';
 const publicDir = new URL('./public/', import.meta.url);
 function reply(res, status, data, type = 'application/json', headers = {}) {
@@ -28,17 +30,44 @@ async function body(req) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RequestError(400, 'Invalid request');
   return value;
 }
-export function createServer({ dbPath, now = Date.now, rateLimit } = {}) {
+export function createServer({ dbPath, now = Date.now, rateLimit, adminRateLimit, tlsOptions } = {}) {
   const limiter = createLimiter(rateLimit);
+  const loginLimiter = createLimiter({ limit: 5, windowMs: 15 * 60 * 1000, globalLimit: 20, ...adminRateLimit });
   const store = dbPath === undefined ? null : openInquiryStore(dbPath);
-  const server = http.createServer(async (req, res) => {
+  const auth = createAdminAuth(store?.admin, now);
+  const handler = async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
+      if (url.pathname.startsWith('/api/admin/')) {
+        const context = adminOrigin(req, server.address().port, req.method !== 'GET');
+        if (req.method === 'POST' && url.pathname === '/api/admin/login') {
+          const retry = loginLimiter.attempt(req.socket.remoteAddress, now());
+          if (retry) return reply(res, 429, { error: 'Too many login attempts' }, 'application/json', { 'Retry-After': String(retry) });
+          const data = await body(req);
+          if (Object.keys(data).length !== 1 || !Object.hasOwn(data, 'password')) throw new RequestError(400, 'Invalid login request');
+          const session = await auth.login(data.password, context.origin);
+          return reply(res, 200, { authenticated: true, csrfToken: session.csrfToken }, 'application/json', { 'Set-Cookie': sessionCookie(session.token, context.secure) });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/admin/session') {
+          const session = auth.authenticate(req.headers.cookie, context.secure, context.origin);
+          auth.touch(session);
+          return reply(res, 200, { authenticated: true, csrfToken: session.csrfToken });
+        }
+        if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
+          const data = await body(req);
+          if (Object.keys(data).length !== 0) throw new RequestError(400, 'Invalid logout request');
+          const session = auth.authenticate(req.headers.cookie, context.secure, context.origin);
+          auth.logout(session, req.headers['x-csrf-token']);
+          return reply(res, 200, { authenticated: false }, 'application/json', { 'Set-Cookie': sessionCookie('', context.secure, true) });
+        }
+        throw new RequestError(404, 'Not found');
+      }
       if (req.method === 'GET' && url.pathname === '/api/businesses') return reply(res, 200, businesses);
       if (req.method === 'POST' && ['/api/lead', '/api/chat'].includes(url.pathname)) {
         if (req.headers.origin) {
           const port = server.address().port;
-          if (![ `http://localhost:${port}`, `http://127.0.0.1:${port}` ].includes(req.headers.origin)) throw new RequestError(403, 'Request origin not allowed');
+          const scheme = req.socket.encrypted ? 'https' : 'http';
+          if (![ `${scheme}://localhost:${port}`, `${scheme}://127.0.0.1:${port}` ].includes(req.headers.origin)) throw new RequestError(403, 'Request origin not allowed');
         }
         if (url.pathname === '/api/lead') {
           const retry = limiter.attempt(req.socket.remoteAddress, now());
@@ -68,9 +97,12 @@ export function createServer({ dbPath, now = Date.now, rateLimit } = {}) {
         reply(res, status, { error: error instanceof RequestError ? error.message : 'Request failed' }, 'application/json', { Connection: 'close' });
       }
     }
-  });
+  };
+  let server;
+  try { server = tlsOptions ? https.createServer(tlsOptions, handler) : http.createServer(handler); }
+  catch (error) { store?.close(); throw error; }
   server.requestTimeout = 15000; server.headersTimeout = 10000; server.maxRequestsPerSocket = 100;
-  const cleanup = () => { limiter.clear(); store?.close(); };
+  const cleanup = () => { limiter.clear(); loginLimiter.clear(); store?.close(); };
   server.on('close', cleanup); server.on('error', cleanup);
   return server;
 }

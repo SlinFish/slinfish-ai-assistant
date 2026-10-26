@@ -77,7 +77,7 @@ test('stored inquiry has secure ID, strict metadata, only submitted data and sev
   assert.ok(!JSON.stringify(result).includes(sample.contact));
   const db = new DatabaseSync(file), row = db.prepare('SELECT * FROM inquiries WHERE id=?').get(result.inquiryId);
   assert.deepEqual({ ...row }, { id: result.inquiryId, business_id: 'hotel', name: sample.name, contact: sample.contact, question: sample.question, consent: 1, status: 'new', created_at: time, updated_at: time, expires_at: time + RETENTION_MS, version: 1 });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1); db.close();
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2); db.close();
 });
 test('parameterized writes preserve SQL injection text and business-scoped reads enforce isolation', t => {
   const store = openInquiryStore(storage(t)); onCleanup(t, () => store.close());
