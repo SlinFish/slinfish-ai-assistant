@@ -1,16 +1,10 @@
-import http from 'node:http';
-import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-const base=path.dirname(fileURLToPath(import.meta.url));
-export const businesses={
- realestate:{name:'Northstar Properties',sector:'Real estate',faq:[['property','Our sample agency handles rental and purchase inquiries. A team member can confirm current listings.'],['viewing','Leave your preferred area and viewing date. A team member will confirm.']]},
- auto:{name:'Harbor Auto Service',sector:'Automotive',faq:[['service','Our sample workshop handles maintenance and inspections. Staff will confirm availability.'],['price','Repair prices depend on the vehicle and inspection. Staff will prepare a quote.']]},
- retail:{name:'Luma Home Store',sector:'Retail',faq:[['stock','A team member must confirm live stock. Please share the item and quantity.'],['delivery','Delivery depends on the destination. Staff can confirm options.']]},
- hotel:{name:'Aster House',sector:'Hospitality',faq:[['check-in','Sample check-in begins at 2 PM. Confirm with the property before travel.'],['booking','Leave your dates and guest count. Staff will confirm availability and rates.']]}
-};
-export function answer(b,msg){const text=String(msg).toLowerCase();const match=b.faq.find(([keyword])=>text.includes(keyword));return match?match[1]:"I don't have verified information about that. Please leave an inquiry so a team member can help."}
-function reply(res,status,data,type='application/json'){res.writeHead(status,{'Content-Type':type,'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});res.end(type==='application/json'?JSON.stringify(data):data)}
-async function body(req){let s='';for await(const c of req){s+=c;if(s.length>12000)throw Error('Too large')}return JSON.parse(s)}
-export const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');if(req.method==='GET'&&url.pathname==='/api/businesses')return reply(res,200,businesses);if(req.method==='POST'&&url.pathname==='/api/chat'){const d=await body(req);if(!businesses[d.business]||typeof d.message!=='string'||d.message.length>1000)return reply(res,400,{error:'Invalid request'});return reply(res,200,{message:answer(businesses[d.business],d.message),mode:'rules-demo'})}if(req.method==='POST'&&url.pathname==='/api/lead'){const d=await body(req);if(!businesses[d.business]||!d.consent||![d.name,d.contact,d.question].every(v=>typeof v==='string'&&v.trim()&&v.length<500))return reply(res,400,{error:'Complete all fields and consent'});return reply(res,200,{message:'Demo only: validated but not stored or sent. No team member will receive this inquiry.'})}if(req.method!=='GET')return reply(res,405,{error:'Method not allowed'});const f=path.resolve(base,'public','.'+(url.pathname==='/'?'/index.html':url.pathname));if(!f.startsWith(path.join(base,'public')+path.sep))return reply(res,403,{error:'Forbidden'});const bytes=await readFile(f);const ext=path.extname(f);return reply(res,200,bytes,ext==='.css'?'text/css':ext==='.js'?'text/javascript':'text/html')}catch(e){reply(res,e.code==='ENOENT'?404:400,{error:'Request failed'})}});
-if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))server.listen(process.env.PORT||3000,()=>console.log('Demo running')); 
+import { fileURLToPath } from 'node:url';
+import { createServer } from './src/http.js';
+export { createServer } from './src/http.js';
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const server = createServer();
+    server.listen(process.env.PORT || 3000, () => console.log('Business assistant running'));
+  } catch { console.error('Invalid assistant configuration. Check AI_PROVIDER, AI_MODEL, AI_API_KEY and AI_TIMEOUT_MS.'); process.exitCode = 1; }
+}
