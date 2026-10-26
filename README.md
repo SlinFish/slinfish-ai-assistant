@@ -18,25 +18,57 @@ The default port is 3000. Demo mode needs no API key or paid API. Try “What is
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP listening port supplied by hosting platform |
-| `AI_PROVIDER` | `demo` | `demo` or `openai`; unsupported values fail startup |
-| `AI_MODEL` | `gpt-4o-mini` | OpenAI model supporting Chat Completions, JSON object output, temperature and max_tokens |
+| `AI_PROVIDER` | `demo` | `demo`, `gemini`, or `openai`; unsupported values fail startup |
+| `AI_MODEL` | provider-specific | Gemini: `gemini-3.8-flash` (only supported Gemini ID); OpenAI: `gpt-4o-mini` |
+| `GEMINI_API_KEY` | unset | Required only for `gemini`; backend only, sent in `x-goog-api-key` header |
 | `AI_API_KEY` | unset | Required only for `openai`; backend only |
 | `AI_TIMEOUT_MS` | `8000` | Whole provider operation deadline, integer 100–30000 ms |
 
 Set variables in your hosting platform's secure environment settings. Never put credentials in frontend code, commits, chat, or a public configuration endpoint. `.env.example` lists non-secret defaults; Node does not load `.env` automatically. On Node 20.6+ you may explicitly run `node --env-file=.env server.js` with an ignored local file. Do not run `npm start` expecting it to load that file.
 
-For AI mode, configure `AI_PROVIDER=openai`, `AI_API_KEY` through the host secret facility, and optionally `AI_MODEL`. The fixed provider destination is `https://api.openai.com/v1/chat/completions`; allow HTTPS egress to `api.openai.com`. Custom base URLs and browser-side provider calls are intentionally unsupported. Requests do not follow redirects. Provider authentication, billing access, model compatibility, network policy, and TLS trust require manual configuration. Do not disable TLS verification. Managed proxy credentials must be bound to `AI_API_KEY` for `api.openai.com` and used through the supplied proxy. Native fetch does not honor proxy variables by default on every supported Node version: in a managed proxy environment use Node.js 24.5+ with `NODE_USE_ENV_PROXY=1` (or `node --use-env-proxy server.js`), retaining the inherited proxy and CA trust settings. Earlier Node versions need a host-supported fetch proxy configuration before enabling AI mode. Direct deployment without a proxy can use Node.js 20+.
+For optional **OpenAI** mode (outside the $0 workflow), configure `AI_PROVIDER=openai`, `AI_API_KEY` through the host secret facility, and optionally `AI_MODEL`. The fixed provider destination is `https://api.openai.com/v1/chat/completions`; allow HTTPS egress to `api.openai.com`. Custom base URLs and browser-side provider calls are intentionally unsupported. Requests do not follow redirects. OpenAI authentication, model compatibility, network policy, and TLS trust require manual configuration. Do not enable OpenAI for the $0 workflow. Do not disable TLS verification. Managed proxy credentials must be bound to `AI_API_KEY` for `api.openai.com` and used through the supplied proxy. Native fetch does not honor proxy variables by default on every supported Node version: in a managed proxy environment use Node.js 24.5+ with `NODE_USE_ENV_PROXY=1` (or `node --use-env-proxy server.js`), retaining the inherited proxy and CA trust settings. Earlier Node versions need a host-supported fetch proxy configuration before enabling AI mode. Direct deployment without a proxy can use Node.js 20+.
 
-Live provider calls incur provider charges. They send the current question and only the selected business's approved knowledge to OpenAI. Avoid personal or sensitive information. No chat history is sent or retained by this application. Review provider retention and data-processing terms before enabling real traffic. This task adds no billing/subscription functionality.
+OpenAI calls can incur charges; Gemini Free tier has limited unpaid quotas for eligible unbilled projects. Live mode sends the current question and only the selected business's approved knowledge to the explicitly selected provider (Google or OpenAI). Avoid personal or sensitive information. No chat history is sent or retained by this application. Review provider retention and data-processing terms before enabling real traffic. This task adds no billing/subscription functionality.
+
+## Gemini and the $0 workflow
+
+Demo mode remains the default, even if API keys are present. Run locally with Node.js on your existing machine; no paid hosting, subscription, or billing activation is required. OpenAI is optional and must not be enabled for this budget.
+
+1. In [Google AI Studio](https://aistudio.google.com/apikey), select your existing **unbilled Free tier project** and create/reuse a Gemini API key. Confirm its tier and model availability in AI Studio. Do **not** attach a billing account or upgrade to obtain quota. If the model is unavailable for that project, region or account, keep demo mode.
+2. Store `GEMINI_API_KEY` only in the server's secure environment settings or an ignored local `.env` file. Never paste it into browser code, API requests to this app, or commits.
+3. Configure these non-secret values, then run `npm start` (or `node --env-file=.env server.js` to load a local ignored file):
+
+   ```dotenv
+   AI_PROVIDER=gemini
+   AI_MODEL=gemini-3.8-flash
+   AI_TIMEOUT_MS=8000
+   ```
+
+   Remove a previous OpenAI `AI_MODEL` value before switching. The selected model defaults automatically if `AI_MODEL` is unset. Other Gemini IDs fail startup rather than silently using an unverified or paid model. Presence of `AI_API_KEY` never causes a Gemini request to use OpenAI.
+4. Permit HTTPS egress to `generativelanguage.googleapis.com`. Requests use Google's official `v1beta/models/gemini-3.8-flash:generateContent` REST API; the key goes in a header, never the URL. Managed secret-proxy bindings must use `GEMINI_API_KEY` and that destination. Apply the native-fetch proxy/CA configuration described above if needed.
+5. Test with fictional questions only. Inspect your project's active quotas in AI Studio. A 429/quota error, denied access, unavailable model, safety block, timeout, malformed response, or network failure returns the safe handoff (HTTP 503). There are **no retries, model substitutions, or fallback providers**. Unknown or uncertain selections return normal HTTP 200 handoff. Manually choose `AI_PROVIDER=demo` to continue without remote calls.
+
+### Model verification and free-tier limits
+
+Model ID checked on **2026-10-26** against Google's official sources:
+
+- [Gemini API cookbook Get Started](https://github.com/google-gemini/cookbook/blob/550674681574d7aa24304b8fa9b31234e241ed7e/quickstarts/Get_started.ipynb) lists `gemini-3.8-flash` as the default current Flash model.
+- [Official REST JSON-mode example](https://github.com/google-gemini/cookbook/blob/550674681574d7aa24304b8fa9b31234e241ed7e/quickstarts/rest/JSON_mode_REST.ipynb) uses that ID with `generateContent` and JSON output.
+- [Google's API-key unpaid-tier documentation](https://github.com/google-gemini/gemini-cli/blob/cd1b45c2db0a5ea7b7fc3b67c1ba5879601d6005/docs/resources/quota-and-pricing.md#log-in-with-gemini-api-key-unpaid) describes unpaid Gemini API-key access to Flash models. CLI quotas are **not** this application's quota guarantee.
+- Recheck [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), and your project's model access before live use. The documentation site's network destination was blocked during implementation; official GitHub sources above were readable. No authenticated Gemini request or project-specific free-tier entitlement was verified because `GEMINI_API_KEY` was not configured.
+
+Free-tier availability and request/token quotas vary by project, account, region, model and time; quota exhaustion is expected and not a reason to enable billing. This app cannot inspect or enforce your Google project's billing tier. Keeping the project unbilled is the operator's responsibility. **Free tier is neither unlimited nor a guarantee of zero cost if billing is later enabled.** Pinning a model and limiting requests do not prevent charges on a billed project. The adapter uses ordinary text/JSON generation only, with no search, paid tools, batch jobs, provisioned resources or automatic upgrades.
+
+Google may use Free tier input/output to improve products under applicable terms. Review [Gemini API terms](https://ai.google.dev/gemini-api/terms) and data-use rules before live use; do not submit customer personal or confidential information. No conversations or contacts are persisted by this application. Local tests use synthetic responses and require no key, billing or provider calls.
 
 ## Architecture and knowledge approval
 
 - `src/knowledge.js`: deeply frozen business details, service lists, FAQs, policy summaries, and retrieval restricted to one business. All claims derive from the original demo; empty service lists mean no additional service details are approved. Curated question variants add phrasing, not facts.
-- `src/provider.js`: environment validation and OpenAI transport, bounded response size, abortable deadline, strict response shape. It asks for a fact ID or uncertainty, never free-form customer-facing text.
+- `src/provider.js`: provider selection/configuration and shared transport with bounded response size, abortable deadline, and strict selection shape; retains optional OpenAI. `src/gemini.js`: isolated Gemini REST request and completion parsing. It asks for a fact ID or uncertainty, never free-form customer-facing text.
 - `src/chat.js`: orchestration and output checks. Only IDs in the selected business's FAQs are accepted; answers are the exact approved text, with scoped source IDs. Unknown IDs, uncertainty and failures return a fixed handoff. No model-generated prose is displayed.
 - `src/http.js`: routes, body limits, strict request validation, per-socket-IP rate limits, public asset allowlist, and safe errors. `server.js` is the startup entry point.
 - `public/app.js`: text-only rendering and generation checks that discard replies from a previous business selection. API keys and provider configuration never reach the browser.
-- `server.test.js` and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact OpenAI or need credentials.
+- `server.test.js`, `gemini.test.js`, and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact Google/OpenAI or need credentials.
 
 Review knowledge changes as code. Add only business-approved facts and question variants. To answer new topics, add approved FAQ text; details/services/policies provide context but are not independently rendered as answers. Unapproved prices, hours, services, policies, or inventory must remain unavailable. Automated tests and human review should accompany knowledge updates.
 
@@ -52,7 +84,7 @@ The AI integration is intentionally constrained retrieval and selection rather t
 {"business":"hotel","message":"What is check-in?"}
 ```
 
-A successful answer contains `message`, `mode` (`demo` or `openai`), `handoff`, and `sources` (e.g. `hotel:check-in`). Unknown questions return HTTP 200 with `handoff: true` and no sources. Provider failures return HTTP 503 with the same safe handoff plus `error: "assistant_unavailable"`; upstream bodies, credentials and exception details are suppressed. There are no automatic provider retries.
+A successful answer contains `message`, `mode` (`demo`, `gemini`, or `openai`), `handoff`, and `sources` (e.g. `hotel:check-in`). Unknown questions return HTTP 200 with `handoff: true` and no sources. Provider failures return HTTP 503 with the same safe handoff plus `error: "assistant_unavailable"`; upstream bodies, credentials and exception details are suppressed. There are no automatic provider retries.
 
 `POST /api/lead` remains a **validation-only demo**, requires a known business, a boolean `consent: true`, and nonblank strings `name` (100 characters), `contact` (150), `question` (400). It neither stores data nor sends it to a provider or staff. Use fictional test values only. No personal information persistence is implemented.
 
@@ -60,7 +92,7 @@ Both POST routes require `application/json`, limit bodies to 12000 bytes, and re
 
 ## Deployment and security limitations
 
-Deploy on a Node.js-capable host with start command `npm start` and its supplied `PORT`. Static-only hosting is insufficient for API routes. Start with demo mode, run `npm test`, then verify `/`, `/api/businesses`, and a chat request locally or through your deployed HTTPS endpoint. Configure secrets and egress before opting into AI mode. This repository does not include CI deployment or a paid-provider acceptance test.
+For the $0 workflow run locally or use an existing host whose free allowance you have independently checked; no new paid host is required. If deploying, use a Node.js-capable host with start command `npm start` and its supplied `PORT`. Static-only hosting is insufficient for API routes. Start with demo mode, run `npm test`, then verify `/`, `/api/businesses`, and a chat request locally or through your deployed HTTPS endpoint. Configure secrets and egress before opting into AI mode. This repository does not include CI deployment or a live-provider acceptance test.
 
 The application stores no conversations, inquiries or customer personal information on disk and does not log request bodies. It temporarily processes request content in memory. Rate limits retain socket IP/count/expiry in memory only, clear expired records on subsequent POST requests, and clear on shutdown; the map is capped at 10000 clients. The limit is 30 POST attempts per IP per 60 seconds, shared across business IDs and API POST routes. It resets on process restart, is not distributed, and deliberately ignores `X-Forwarded-For`. Behind a reverse proxy, users may share a bucket. Deploy an edge limiter with trusted proxy configuration before public use.
 

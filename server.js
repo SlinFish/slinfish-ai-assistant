@@ -6,5 +6,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     const server = createServer();
     server.listen(process.env.PORT || 3000, () => console.log('Business assistant running'));
-  } catch { console.error('Invalid assistant configuration. Check AI_PROVIDER, AI_MODEL, AI_API_KEY and AI_TIMEOUT_MS.'); process.exitCode = 1; }
+  } catch { console.error('Invalid assistant configuration. Check AI_PROVIDER, AI_MODEL, AI_API_KEY, GEMINI_API_KEY and AI_TIMEOUT_MS.'); process.exitCode = 1; }
 }
