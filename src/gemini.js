@@ -10,7 +10,7 @@ export function geminiRequest(knowledge, message, config, instruction) {
       systemInstruction: { parts: [{ text: instruction }, { text: JSON.stringify(knowledge) }] },
       contents: [{ role: 'user', parts: [{ text: message }] }],
       generationConfig: {
-        temperature: 0, candidateCount: 1, maxOutputTokens: 1024,
+        maxOutputTokens: 1024,
         responseMimeType: 'application/json',
         responseSchema: {
           type: 'OBJECT', required: ['factId', 'confident'],

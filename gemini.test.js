@@ -41,6 +41,8 @@ test('Gemini uses official REST endpoint and header key with only scoped knowled
       const payload = JSON.parse(options.body);
       assert.deepEqual(JSON.parse(payload.systemInstruction.parts[1].text), retrieveKnowledge(business));
       assert.deepEqual(payload.contents, [{ role: 'user', parts: [{ text: 'Customer question' }] }]);
+      assert.equal(Object.hasOwn(payload.generationConfig, 'candidateCount'), false, 'Gemini must not receive unsupported candidateCount');
+      assert.equal(Object.hasOwn(payload.generationConfig, 'temperature'), false, 'Gemini must not receive deprecated temperature');
       assert.equal(payload.generationConfig.responseMimeType, 'application/json');
       assert.deepEqual(payload.generationConfig.responseSchema.properties.factId.enum, record.faqs.map(f => f.id));
       assert.equal(payload.tools, undefined);
