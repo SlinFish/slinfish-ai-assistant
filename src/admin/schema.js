@@ -37,13 +37,29 @@ export function adminRepository(db) {
       db.prepare('INSERT INTO administrators (id,password_salt,password_hash,scrypt_n,scrypt_r,scrypt_p,created_at) VALUES (1,?,?,?,?,?,?)')
         .run(record.password_salt, record.password_hash, record.scrypt_n, record.scrypt_r, record.scrypt_p, now);
     },
-    createSession(hash, origin, now, idleMs, absoluteMs) {
+    resetPassword(record, now = Date.now()) {
       db.exec('BEGIN IMMEDIATE');
       try {
+        const result = db.prepare(`UPDATE administrators SET password_salt=?,password_hash=?,scrypt_n=?,scrypt_r=?,scrypt_p=? WHERE id=1`)
+          .run(record.password_salt, record.password_hash, record.scrypt_n, record.scrypt_r, record.scrypt_p);
+        if (result.changes !== 1) throw new Error('Administrator required');
+        db.prepare('UPDATE admin_sessions SET revoked_at=? WHERE revoked_at IS NULL').run(now);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    },
+    createSession(hash, origin, now, idleMs, absoluteMs, verifiedCredential) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        // A reset can complete while asynchronous scrypt verification is in flight.
+        const current = db.prepare('SELECT password_salt,password_hash,enabled FROM administrators WHERE id=1').get();
+        if (!verifiedCredential || !current || current.enabled !== 1
+          || current.password_salt !== verifiedCredential.password_salt || current.password_hash !== verifiedCredential.password_hash) {
+          db.exec('ROLLBACK'); return false;
+        }
         db.prepare('DELETE FROM admin_sessions WHERE revoked_at IS NOT NULL OR absolute_expires_at<=? OR idle_expires_at<=?').run(now, now);
         db.prepare('UPDATE admin_sessions SET revoked_at=? WHERE revoked_at IS NULL').run(now);
         db.prepare('INSERT INTO admin_sessions VALUES (?,1,?,?,?,?,?,NULL)').run(hash, origin, now, now, now + idleMs, now + absoluteMs);
-        db.exec('COMMIT');
+        db.exec('COMMIT'); return true;
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     },
     session(hash, origin, now) {

@@ -45,7 +45,7 @@ export function createAdminAuth(repository, now = Date.now) {
         const matches = await verifyPassword(password, admin ?? dummy);
         if (!admin || admin.enabled !== 1 || !matches) throw new RequestError(401, 'Invalid administrator credentials');
         const token = randomBytes(32).toString('base64url');
-        repository.createSession(tokenHash(token), origin, now(), IDLE_MS, ABSOLUTE_MS);
+        if (!repository.createSession(tokenHash(token), origin, now(), IDLE_MS, ABSOLUTE_MS, admin)) throw new RequestError(401, 'Invalid administrator credentials');
         return { token, csrfToken: csrf(token) };
       } finally { verifying = false; }
     },

@@ -229,7 +229,7 @@ test('session hashes, expiry and revocation survive a store reopen', async t => 
   const { dir, file } = directory(t); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const origin = 'http://127.0.0.1:3000', now = 1800000000000, hash = tokenHash('c'.repeat(43));
   let store = openInquiryStore(file); store.admin.createAdmin(await hashPassword(PASSWORD));
-  store.admin.createSession(hash, origin, now, IDLE_MS, ABSOLUTE_MS); store.close();
+  store.admin.createSession(hash, origin, now, IDLE_MS, ABSOLUTE_MS, store.admin.getAdmin()); store.close();
   store = openInquiryStore(file);
   assert.ok(store.admin.session(hash, origin, now)); assert.equal(store.admin.session(hash, origin, now + IDLE_MS), undefined);
   store.admin.revoke(hash, now + 1); store.close();

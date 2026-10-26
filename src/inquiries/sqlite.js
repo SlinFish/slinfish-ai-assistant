@@ -12,7 +12,7 @@ export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const MAX_INQUIRIES = 200;
 const inside = (root, file) => { const relative = path.relative(root, file); return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)); };
 
-function databasePath(input) {
+function databasePath(input, requireExisting) {
   if (typeof input !== 'string' || !path.isAbsolute(input) || input.includes('\0')) throw new Error('Invalid storage configuration');
   const parent = realpathSync(path.dirname(input)); // Require an existing private directory.
   if (inside(ROOT, path.resolve(input)) || inside(ROOT, parent)) throw new Error('Storage must be outside the checkout');
@@ -24,17 +24,19 @@ function databasePath(input) {
     if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || inside(ROOT, realpathSync(file))
       || (process.platform !== 'win32' && (info.mode & 0o077) !== 0)) throw new Error('Private regular database file required');
   } else {
+    if (requireExisting) throw new Error('Existing database required');
     const handle = openSync(file, 'wx', 0o600); closeSync(handle);
   }
   return file;
 }
 
-export function openInquiryStore(input) {
-  const db = new DatabaseSync(databasePath(input));
+export function openInquiryStore(input, { requireExisting = false, allowMigration = true } = {}) {
+  const db = new DatabaseSync(databasePath(input, requireExisting));
   try {
     db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=1000;');
     const version = db.prepare('PRAGMA user_version').get().user_version;
     const appId = db.prepare('PRAGMA application_id').get().application_id;
+    if (!allowMigration && version !== 2) throw new Error('Current schema required');
     if (version === 0) {
       const tables = db.prepare("SELECT count(*) AS total FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").get().total;
       if (tables !== 0 || appId !== 0) throw new Error('Unrecognized database');
@@ -58,7 +60,7 @@ export function openInquiryStore(input) {
         PRAGMA application_id=${APP_ID}; PRAGMA user_version=1; COMMIT;`);
     } else if (![1, 2].includes(version) || appId !== APP_ID) throw new Error('Unsupported database');
     if (db.prepare("SELECT value FROM app_metadata WHERE key='realm'").get()?.value !== 'fictional-demo') throw new Error('Incorrect storage realm');
-    migrateAdminSchema(db);
+    if (allowMigration) migrateAdminSchema(db);
     db.exec('PRAGMA journal_mode=WAL;');
     const insert = db.prepare(`INSERT INTO inquiries
       (id,business_id,name,contact,question,consent,status,created_at,updated_at,expires_at,version)

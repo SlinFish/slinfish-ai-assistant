@@ -17,7 +17,7 @@ To enable local persistence, set `INQUIRY_DB_PATH` to an **absolute file path in
 
 Relative paths, `:memory:`, SQLite URI paths, paths in the checkout/public tree (including resolved symlinks), corrupt databases, unknown schema versions and non-demo database identities fail startup. They do **not** cause validation-only or in-memory fallback. A generic startup error is printed without paths, request data or SQLite details. Unset configuration and failed configuration are different states.
 
-`INQUIRY_DB_PATH` is read by the executable startup and explicit local administrator bootstrap only. `.env.example` documents names; `.env` is not loaded automatically. There are no storage configuration endpoints. Only an operator can change the path. Keep the directory outside other repositories too; Git ignores are a secondary safeguard, not a storage boundary. Do not include the directory in development-environment publication snapshots, source archives or build artifacts.
+`INQUIRY_DB_PATH` is read by the executable startup and explicit local administrator bootstrap/reset commands only. `.env.example` documents names; `.env` is not loaded automatically. There are no storage configuration endpoints. Only an operator can change the path. Keep the directory outside other repositories too; Git ignores are a secondary safeguard, not a storage boundary. Do not include the directory in development-environment publication snapshots, source archives or build artifacts.
 
 ## Inquiry API and stored fields
 
@@ -54,7 +54,7 @@ No administrator exists by default. Starting the app, running tests, migrations 
 node scripts/admin-bootstrap.js
 ```
 
-Use a private interactive terminal with `INQUIRY_DB_PATH` pointing to the existing private fictional-demo database. The command accepts **no arguments**, no password environment variable and no piped input; stdin/stdout/stderr must be terminals. It prompts twice with echo disabled and terminal history disabled. Choose a unique 16–128-character passphrase (at least 16 non-padding characters). Never put a passphrase in source, shell arguments/history, transcripts, logs or Git. A second setup attempt is rejected before asking for credentials; database constraints also reject concurrent attempts to create a second owner. Failure messages are fixed and do not print paths, hashes, secrets or exceptions. There is no public registration, bootstrap, reset or password-recovery endpoint. Do not delete the inquiry database to reset credentials; a recovery tool is outside this milestone.
+Use a private interactive terminal with `INQUIRY_DB_PATH` pointing to the existing private fictional-demo database. The command accepts **no arguments**, no password environment variable and no piped input; stdin/stdout/stderr must be terminals. It prompts twice with echo disabled and terminal history disabled. Choose a unique 16–128-character passphrase (at least 16 non-padding characters). Never put a passphrase in source, shell arguments/history, transcripts, logs or Git. A second setup attempt is rejected before asking for credentials; database constraints also reject concurrent attempts to create a second owner. Failure messages are fixed and do not print paths, hashes, secrets or exceptions. There is no public registration, bootstrap, reset or password-recovery endpoint. Do not delete the inquiry database to reset credentials; use the separate owner-controlled reset command below.
 
 Passphrases use asynchronous Node scrypt (`N=32768`, `r=8`, `p=3`, 64 MiB maximum memory), fresh 128-bit random salts, 64-byte derived hashes and timing-safe comparison. Only salted hashes and KDF parameters are persisted. Transient password strings must exist in client/server memory to perform authentication; JavaScript cannot guarantee their erasure. The bootstrap and server do not print them or write plaintext passwords to disk.
 
@@ -188,10 +188,106 @@ Write-Host 'Login, session and logout checks passed.'
 
 Do not inspect or print the web-session cookie collection, login JSON, `$auth`, or `$state`. The automated suite independently tests server-side replay rejection after logout even if the old cookie is retained, expiry, wrong-CSRF/Origin/Host rejection, session fixation, throttling, migration preservation and rollback behavior. Windows commands are provided for operator verification but were not executed on Windows here; actual masked-prompt behavior was checked in a Linux PTY with temporary synthetic credentials, then the database was removed.
 
+
+## Owner-controlled local administrator passphrase reset
+
+```sh
+node scripts/admin-reset.js
+```
+
+Reset requires the **existing configured private schema-v2 fictional-demo database**, an existing administrator, and interactive stdin/stdout/stderr. It rejects all arguments, piped input and missing/invalid databases before prompting; it does not accept passphrases from environment variables. A mistyped missing file is not created, and an older schema is not migrated by reset. Bootstrap remains one-time and cannot overwrite the owner.
+
+The CLI prompts twice with echo/history disabled and reuses the existing 16–128-character policy and scrypt implementation. Choose a new, different, unique passphrase. Each reset generates a fresh random salt. Credential replacement and revocation of all existing sessions commit in **one SQLite transaction**; a failure rolls both back. Inquiries (including IDs, business scope, status, timestamps, expiry and version), administrator ID/creation time/enabled state, and schema version 2 are preserved. Reset does not create or re-enable an administrator. Future logins also check that the credential snapshot verified by asynchronous scrypt is still current before issuing a session, preventing an in-flight old-password login from surviving reset.
+
+Successful output is only `Local administrator passphrase reset; all sessions revoked.` Failure output is fixed and omits the reason, passphrases, salts, hashes, tokens, database path and exceptions. Exit status is 0 on success and 1 on rejection/failure. There is no password-reset HTTP endpoint, recovery token, email, default password or dashboard. Tests and terminal smoke checks use only synthetic credentials and temporary databases.
+
+**Owner-control boundary:** recovery does not require knowledge of the old passphrase. Permission to use your Windows account and read/write the protected database effectively grants permission to take over the application administrator. Protect the Windows sign-in, lock the screen, keep the dedicated NTFS directory owner-restricted, and do not share that Windows account. This cannot defend against malware or another process already running as the same OS user, or an OS administrator with filesystem access. Keep SQLite/WAL files and backups private; do not copy them into Git, public folders or cloud environment snapshots. Restoring an old backup may restore old credential/session state: perform a reset against the restored database before allowing login, and reconcile inquiry deletion/retention separately. JavaScript cannot guarantee erasure of transient passphrase strings, and SQLite/WAL/backups may retain historical hashes. No forensic-erasure claim is made.
+
+### Windows PowerShell reset and verification
+
+Use a private Windows Terminal at the repository root with Node 24.x. Disable transcripts, terminal recording and verbose/debug HTTP tracing. Do not put passphrases in shell commands, arguments, environment variables or files. Windows execution is not verified here; masking and reset behavior were checked using a Linux PTY with synthetic credentials, and the temporary database was removed.
+
+**Optional full before/after verification:** if you still know the old passphrase, define this function in a second PowerShell terminal while the current server is running. It prompts securely, never prints response bodies or cookie values, and asserts only the expected login status. If the passphrase was forgotten, skip the old-password steps; the reset command never needs it.
+
+```powershell
+$origin = 'http://127.0.0.1:3000'
+function Confirm-PrivateAdminLogin {
+    param([string]$Prompt, $Session, [int]$ExpectedStatus)
+    $securePass = Read-Host $Prompt -AsSecureString
+    $loginBody = $null
+    $result = $null
+    $status = 0
+    try {
+        $loginBody = @{ password = ([System.Net.NetworkCredential]::new('', $securePass)).Password } | ConvertTo-Json -Compress
+        $result = Invoke-RestMethod -Uri "$origin/api/admin/login" -Method Post -ContentType 'application/json; charset=utf-8' -Headers @{ Origin = $origin } -WebSession $Session -Body $loginBody
+        if ($result.authenticated -ne $true) { throw 'Invalid authentication response.' }
+        $status = 200
+    } catch {
+        if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401) { $status = 401 }
+        else { throw 'Authentication verification failed; do not dump request data.' }
+    } finally {
+        $loginBody = $null
+        $result = $null
+        $securePass.Dispose()
+        $securePass = $null
+    }
+    if ($status -ne $ExpectedStatus) { throw 'Unexpected authentication result.' }
+}
+# Optional: keep this session in this terminal to verify server-side revocation.
+$beforeResetSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Confirm-PrivateAdminLogin -Prompt 'Current passphrase (before reset)' -Session $beforeResetSession -ExpectedStatus 200
+```
+
+In the **server terminal**, stop the application with Ctrl+C. Keep the same protected database; do not delete or replace it. Run:
+
+```powershell
+$env:INQUIRY_DB_PATH = Join-Path (Join-Path $env:LOCALAPPDATA 'SlinFishDemo') 'inquiries.sqlite'
+if (-not (Test-Path -LiteralPath $env:INQUIRY_DB_PATH -PathType Leaf)) { throw 'Existing demo database required.' }
+node scripts/admin-reset.js
+if ($LASTEXITCODE -ne 0) { throw 'Local reset was rejected or failed; no success was confirmed.' }
+# Enter the NEW passphrase twice at the masked prompts, not in these commands.
+$env:PORT = '3000'
+npm.cmd start
+```
+
+In the **verification terminal**, keep the same origin/port. If you performed the optional before-reset login, first check its cookie is now rejected and the old passphrase no longer works:
+
+```powershell
+$revoked = $false
+try {
+    Invoke-RestMethod -Uri "$origin/api/admin/session" -Method Get -Headers @{ Origin = $origin } -WebSession $beforeResetSession | Out-Null
+} catch {
+    if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401) { $revoked = $true }
+    else { throw 'Session revocation verification failed.' }
+}
+if (-not $revoked) { throw 'Old session was unexpectedly accepted.' }
+$oldPasswordSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Confirm-PrivateAdminLogin -Prompt 'Previous passphrase (must now be rejected)' -Session $oldPasswordSession -ExpectedStatus 401
+$beforeResetSession = $null
+$oldPasswordSession = $null
+```
+
+Then verify the new passphrase and log out. If you skipped the optional old-password checks, define the function above without its final optional login call, then run this block:
+
+```powershell
+$newSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Confirm-PrivateAdminLogin -Prompt 'NEW administrator passphrase' -Session $newSession -ExpectedStatus 200
+$state = Invoke-RestMethod -Uri "$origin/api/admin/session" -Method Get -Headers @{ Origin = $origin } -WebSession $newSession
+if ($state.authenticated -ne $true) { throw 'New session verification failed.' }
+$logoutHeaders = @{ Origin = $origin; 'X-CSRF-Token' = $state.csrfToken }
+Invoke-RestMethod -Uri "$origin/api/admin/logout" -Method Post -ContentType 'application/json; charset=utf-8' -Headers $logoutHeaders -WebSession $newSession -Body '{}' | Out-Null
+$state = $null
+$logoutHeaders = $null
+$newSession = $null
+Write-Host 'New administrator login/session/logout verified.'
+```
+
+Do not print the web-session objects, passphrase bodies, headers or CSRF values. Clearing variables limits accidental reuse but does not guarantee secret erasure from process memory. A successful new login revokes prior sessions normally; the old-password failure check must happen first. Automated tests separately compare complete inquiry rows before/after reset and inject a revocation failure to verify transactional rollback. Reset does not implement inquiry deletion, backups or any dashboard feature.
+
 ## Current limits and next review
 
 This includes inquiry persistence and local authentication, but not the dashboard/management system described in [the architecture](docs/lead-management-architecture.md). One-owner local authentication and sessions are implemented, but no dashboard, durable abuse protection, request idempotency, encryption-at-rest, backup/restore workflow, retention purge, or inquiry deletion controls are implemented. **Expiry is metadata only at this stage**: records are not automatically erased after seven days, and all retained rows count toward the cap. Do not accept real personal information. Database isolation is not authentication against another process running as the same OS user; path checks assume an operator-controlled private directory, not a hostile filesystem.
 
 Synchronous SQLite can briefly block the event loop, including up to the one-second busy timeout; this is a bounded local demonstration. Process-local rate limiting is bypassable by restart and is not sufficient for a public service. No production multi-tenant guarantees are claimed. Contact/name/question content has format/length checks, not a guarantee of accuracy or fictionality. A dropped response after COMMIT can lead to duplicate manual submissions.
 
-Real SlinFish sales capture remains disabled: no such business ID or route exists. No external AI receives inquiries. Any next milestone, dashboard, deployment, real-data use, credential recovery or further migration requires review and separate approval. Nothing is merged into main.
+Real SlinFish sales capture remains disabled: no such business ID or route exists. No external AI receives inquiries. Any next milestone, dashboard, deployment, real-data use or further migration requires review and separate approval. Nothing is merged into main.
