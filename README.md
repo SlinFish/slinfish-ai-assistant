@@ -23,6 +23,7 @@ The default port is 3000. Demo mode needs no API key or paid API. Try “What is
 | `GEMINI_API_KEY` | unset | Required only for `gemini`; backend only, sent in `x-goog-api-key` header |
 | `AI_API_KEY` | unset | Required only for `openai`; backend only |
 | `AI_TIMEOUT_MS` | `8000` | Whole provider operation deadline, integer 100–30000 ms |
+| `AI_DIAGNOSTICS` | disabled | Only exact `1` enables safe failure metadata on local server stderr |
 
 Set variables in your hosting platform's secure environment settings. Never put credentials in frontend code, commits, chat, or a public configuration endpoint. `.env.example` lists non-secret defaults; Node does not load `.env` automatically. On Node 20.6+ you may explicitly run `node --env-file=.env server.js` with an ignored local file. Do not run `npm start` expecting it to load that file.
 
@@ -61,14 +62,60 @@ Free-tier availability and request/token quotas vary by project, account, region
 
 Google may use Free tier input/output to improve products under applicable terms. Review [Gemini API terms](https://ai.google.dev/gemini-api/terms) and data-use rules before live use; do not submit customer personal or confidential information. No conversations or contacts are persisted by this application. Local tests use synthetic responses and require no key, billing or provider calls.
 
+## Safe local diagnostics (opt-in)
+
+Enable only in a private local server terminal:
+
+```sh
+AI_DIAGNOSTICS=1 npm start
+```
+
+Alternatively put `AI_DIAGNOSTICS=1` in your ignored local `.env` and explicitly load it with `node --env-file=.env server.js`. To disable, remove the variable or set `AI_DIAGNOSTICS=0`, then restart the server. Only the exact string `1` enables it. Demo remains the default provider; enabling diagnostics does not enable Gemini, make probe requests, change models, retry requests, or activate billing. Keep the project unbilled. The automated diagnostic tests simulate all provider failures without any live calls or real keys.
+
+On a provider failure the server writes **one JSON record to stderr**. Example:
+
+```json
+{"event":"ai_provider_failure","provider":"gemini","category":"model_access_error","phase":"response_body","httpStatus":404,"elapsedMs":123}
+```
+
+The logger constructs records from an allowlist: fixed event/provider/category/phase strings, upstream numeric status (or null before headers), and a bounded elapsed time. It never serializes an exception, stack, cause, error code, URL, model configuration, request/response headers, provider error body, selection text, customer message, or business knowledge. Error bodies are discarded without parsing. Successful calls and normal unknown-answer handoffs are silent. Logger failures cannot change the safe handoff. Keep terminal/hosting logs private; do not enable diagnostics on a shared host or forward stderr to a public log viewer. The application creates no diagnostic files and no public diagnostic route. Existing HTTP 503 `assistant_unavailable` responses stay unchanged.
+
+| Category | Observed signal | What it does and does not establish |
+| --- | --- | --- |
+| `quota_error` | HTTP 429 | Quota or rate exhaustion; does not establish which quota or justify billing activation |
+| `authentication_error` | HTTP 401 | Upstream authentication rejection for that request; not a reason to print or replace the key blindly |
+| `model_access_error` | HTTP 403 or 404 | Permission, model, method, API-version or routing/access issue; metadata access does not establish generation access |
+| `request_rejected` | HTTP 400 or 422 | Possible request/schema/model compatibility rejection; status alone cannot identify a field |
+| `http_error` | Other non-success HTTP status | Upstream HTTP failure with exact numeric status, without response details |
+| `network_error` | Transport failure before headers or during body read | Proxy, TLS, DNS, connection or body-stream failure; no raw error details logged |
+| `timeout` | Application deadline expires | Aborts request; status may be 200 if headers arrived but the body stalled |
+| `invalid_response` | Body/size/JSON/selection/envelope checks fail | Includes blocked, truncated or unsupported content; does not establish provider outage |
+| `configuration_error` | Unsupported live provider reaches the transport | Internal configuration issue; normal environment validation fails at startup |
+
+`phase` distinguishes `request` (before response headers), `response_body` (headers received/body handling), and `response_validation` (JSON/completion/selection checks). A non-success status is classified immediately; cleanup does not wait for the rejected body. This is coarse evidence, not an upstream root-cause trace. No raw provider details are collected to resolve ambiguity.
+
+### Gemini compatibility findings and remaining uncertainty
+
+Reported by the user (not rerun in this task): authentication and `GET /v1beta/models` work; metadata for `gemini-2.5-flash` succeeds; `gemini-3.8-flash` generation times out after 60 seconds; `gemini-2.5-flash` generation returns 404. The application still pins `gemini-3.8-flash`; no switch or live probe was performed. A model-list or model-metadata success does **not** prove that the same project/API version supports `generateContent` for that model. The 404 alone does not identify missing credentials or confirm a typo.
+
+Inspection identified these possibilities without changing the request contract:
+
+- The app's default **8-second deadline** covers request and response reading, so its 503 can occur well before an external 60-second timeout. The supported maximum remains 30 seconds. Increasing a deadline is not proof of compatibility or an instruction to repeat calls.
+- `candidateCount` and `temperature` were already removed for Gemini 3.8 compatibility and regression-tested. The remaining request uses `systemInstruction`, JSON `responseMimeType`, and a nullable string enum in `responseSchema`. A model/API that rejects any of these can return 400/422; diagnostics record that status without silently dropping grounding constraints.
+- Strict validation intentionally requires one candidate, `finishReason: STOP`, one text part, and exactly typed `factId`/`confident` fields. Safety blocks, additional/thought/tool parts, or token-truncated output (including models spending output budget on thinking) can yield HTTP 200 upstream but still trigger `invalid_response` and safe handoff.
+- Proxy/TLS/native-fetch setup and generation-method/model access may differ from metadata operations. `network_error`, `timeout`, and an explicit HTTP status are different observations; none alone proves which upstream component failed.
+
+These diagnostics improve local visibility; they do not fix or confirm live Gemini generation availability. Use demo mode while generation remains unresolved. Do not enable billing, paid services, retries, or alternate models to work around it.
+
 ## Architecture and knowledge approval
 
 - `src/knowledge.js`: deeply frozen business details, service lists, FAQs, policy summaries, and retrieval restricted to one business. All claims derive from the original demo; empty service lists mean no additional service details are approved. Curated question variants add phrasing, not facts.
+- `src/diagnostics.js`: opt-in local failure metadata with strict allowlisting; no public endpoint or raw data logging.
 - `src/provider.js`: provider selection/configuration and shared transport with bounded response size, abortable deadline, and strict selection shape; retains optional OpenAI. `src/gemini.js`: isolated Gemini REST request and completion parsing. It asks for a fact ID or uncertainty, never free-form customer-facing text.
 - `src/chat.js`: orchestration and output checks. Only IDs in the selected business's FAQs are accepted; answers are the exact approved text, with scoped source IDs. Unknown IDs, uncertainty and failures return a fixed handoff. No model-generated prose is displayed.
 - `src/http.js`: routes, body limits, strict request validation, per-socket-IP rate limits, public asset allowlist, and safe errors. `server.js` is the startup entry point.
 - `public/app.js`: text-only rendering and generation checks that discard replies from a previous business selection. API keys and provider configuration never reach the browser.
-- `server.test.js`, `gemini.test.js`, and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact Google/OpenAI or need credentials.
+- `server.test.js`, `gemini.test.js`, `diagnostics.test.js`, and `frontend.test.js`: deterministic knowledge, isolation, provider contract/failures/deadlines, HTTP behavior using ephemeral servers, and delayed frontend response isolation. Tests use simulated provider responses; they do not contact Google/OpenAI or need credentials.
 
 Review knowledge changes as code. Add only business-approved facts and question variants. To answer new topics, add approved FAQ text; details/services/policies provide context but are not independently rendered as answers. Unapproved prices, hours, services, policies, or inventory must remain unavailable. Automated tests and human review should accompany knowledge updates.
 
