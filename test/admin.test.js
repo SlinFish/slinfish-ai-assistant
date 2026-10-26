@@ -13,6 +13,9 @@ import { IDLE_MS, ABSOLUTE_MS, tokenHash, sessionCookie, readSessionCookie, admi
 import { runBootstrap } from '../scripts/admin-bootstrap.js';
 // Synthetic test-only credentials, never used by executable startup as defaults.
 const PASSWORD = 'Fictional test-only passphrase 836!';
+// Node 22 emits this exact runtime warning on SQLite import. Allow no other stderr.
+const sqliteWarning = /^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node(?:\.exe)? --trace-warnings \.\.\.` to show where the warning was created\)\r?\n$/;
+const expectedBootstrapStderr = text => text === '' || sqliteWarning.exec(text)?.[0] === text;
 const inquiry = { business: 'hotel', name: 'Fictional Tester', contact: 'demo@example.invalid', question: 'Fictional booking request', consent: true };
 function directory(t) {
   const dir = mkdtempSync(path.join(tmpdir(), 'slinfish-admin-test-'));
@@ -62,7 +65,25 @@ test('explicit one-time bootstrap rejects noninteractive/argument/password failu
   assert.equal(record.id, 1); assert.ok(!JSON.stringify(record).includes(PASSWORD));
   assert.throws(() => store.admin.createAdmin(record)); store.close();
   const child = spawnSync(process.execPath, ['scripts/admin-bootstrap.js', '--password', PASSWORD], { cwd: new URL('../', import.meta.url), env: { ...process.env, INQUIRY_DB_PATH: file }, encoding: 'utf8', timeout: 5000 });
-  assert.equal(child.status, 1); assert.equal(child.stderr, ''); assert.ok(!child.stdout.includes(PASSWORD)); assert.ok(!child.stdout.includes(file));
+  assert.equal(child.status, 1);
+  assert.ok(expectedBootstrapStderr(child.stderr), 'Unexpected bootstrap stderr');
+  assert.equal(child.stdout.replaceAll('\r\n', '\n'), 'Setup unavailable or already completed. Use a private terminal and configured demo database.\n');
+  for (const output of [child.stdout, child.stderr]) {
+    for (const secret of [PASSWORD, file, record.password_salt, record.password_hash]) assert.ok(!output.includes(secret));
+  }
+});
+
+test('bootstrap stderr allowance accepts only the complete known SQLite warning', () => {
+  const warning = '(node:123) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n'
+    + '(Use `node --trace-warnings ...` to show where the warning was created)\n';
+  assert.equal(expectedBootstrapStderr(''), true);
+  assert.equal(expectedBootstrapStderr(warning), true);
+  assert.equal(expectedBootstrapStderr(warning.replaceAll('\n', '\r\n').replace('`node ', '`node.exe ')), true);
+  for (const text of [PASSWORD, 'PRIVATE_DATABASE_ERROR', 'Error: unexpected failure\n',
+    warning + PASSWORD, PASSWORD + warning, warning + 'additional diagnostic\n',
+    warning + warning, warning + '\n', warning.replace('SQLite', 'Another feature'), warning.replace('time\n', 'time ' + PASSWORD + '\n')]) {
+    assert.equal(expectedBootstrapStderr(text), false);
+  }
 });
 
 test('login issues opaque HttpOnly Strict cookie, exposes only CSRF, and stores only session hash', async t => {
