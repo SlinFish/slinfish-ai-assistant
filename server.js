@@ -7,7 +7,7 @@ import { businesses, answer, isBusiness } from './src/businesses.js';
 import { validateInquiry, validText, RequestError } from './src/inquiries/validation.js';
 import { openInquiryStore } from './src/inquiries/sqlite.js';
 import { createLimiter } from './src/inquiries/rate-limit.js';
-import { createAdminAuth, adminOrigin, sessionCookie } from './src/admin/auth.js';
+import { createAdminAuth, adminOrigin, sessionCookie, assertCsrf } from './src/admin/auth.js';
 export { businesses, answer } from './src/businesses.js';
 const publicDir = new URL('./public/', import.meta.url);
 function reply(res, status, data, type = 'application/json', headers = {}) {
@@ -50,7 +50,7 @@ export function createServer({ dbPath, now = Date.now, rateLimit, adminRateLimit
         }
         if (req.method === 'GET' && url.pathname === '/api/admin/session') {
           const session = auth.authenticate(req.headers.cookie, context.secure, context.origin);
-          auth.touch(session);
+          res.setHeader('X-Admin-Session-Expires', String(auth.touch(session)));
           return reply(res, 200, { authenticated: true, csrfToken: session.csrfToken });
         }
         if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
@@ -59,6 +59,26 @@ export function createServer({ dbPath, now = Date.now, rateLimit, adminRateLimit
           const session = auth.authenticate(req.headers.cookie, context.secure, context.origin);
           auth.logout(session, req.headers['x-csrf-token']);
           return reply(res, 200, { authenticated: false }, 'application/json', { 'Set-Cookie': sessionCookie('', context.secure, true) });
+        }
+        const match = url.pathname.match(/^\/api\/admin\/businesses\/([^/]+)\/inquiries\/([^/]+)(\/history)?$/);
+        if ((req.method === 'GET' && url.pathname === '/api/admin/inquiries') || match) {
+          if (req.method !== 'GET' && !(req.method === 'PATCH' && match && !match[3])) throw new RequestError(405, 'Method not allowed');
+          // Read the bounded body before authorization so expiry/reset is rechecked afterwards.
+          const data = req.method === 'PATCH' ? await body(req) : undefined;
+          const session = auth.authenticate(req.headers.cookie, context.secure, context.origin);
+          let result;
+          if (req.method === 'PATCH') {
+            assertCsrf(session, req.headers['x-csrf-token']);
+            if (url.search) throw new RequestError(400, 'Invalid status update');
+            result = store.management.transition(match[1], match[2], data, session, context.origin, now());
+          } else if (!match) result = store.management.list(url.searchParams);
+          else if (match[3]) result = store.management.history(match[1], match[2], url.searchParams);
+          else {
+            if (url.search) throw new RequestError(400, 'Invalid detail query');
+            result = store.management.detail(match[1], match[2]);
+          }
+          res.setHeader('X-Admin-Session-Expires', String(auth.touch(session)));
+          return reply(res, 200, result);
         }
         throw new RequestError(404, 'Not found');
       }

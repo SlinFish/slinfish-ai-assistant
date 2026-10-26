@@ -195,16 +195,16 @@ test('password verification concurrency is bounded without blocking inquiry subm
 test('migration is additive and idempotent and preserves the exact v1 inquiry row', t => {
   const { dir, file } = directory(t); t.after(() => rmSync(dir, { recursive: true, force: true }));
   let store = openInquiryStore(file); const id = store.save(inquiry), before = { ...store.get('hotel', id) }; store.close();
-  let db = new DatabaseSync(file); db.exec('DROP TABLE admin_sessions; DROP TABLE administrators; PRAGMA user_version=1'); db.close();
+  let db = new DatabaseSync(file); db.exec('DROP TABLE inquiry_status_events; DROP INDEX inquiries_scope; ALTER TABLE inquiries DROP COLUMN workflow_status; DROP TABLE admin_sessions; DROP TABLE administrators; PRAGMA user_version=1'); db.close();
   store = openInquiryStore(file); assert.deepEqual({ ...store.get('hotel', id) }, before); assert.equal(store.admin.hasAdmin(), false); store.close();
   store = openInquiryStore(file); assert.deepEqual({ ...store.get('hotel', id) }, before); store.close();
-  db = new DatabaseSync(file); assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2); db.close();
+  db = new DatabaseSync(file); assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3); db.close();
 });
 
 test('wrong-realm v1 DB is rejected before authentication migration', t => {
   const { dir, file } = directory(t); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = openInquiryStore(file); store.close();
-  let db = new DatabaseSync(file); db.exec("DROP TABLE admin_sessions; DROP TABLE administrators; UPDATE app_metadata SET value='real-sales'; PRAGMA user_version=1"); db.close();
+  let db = new DatabaseSync(file); db.exec("DROP TABLE inquiry_status_events; DROP INDEX inquiries_scope; ALTER TABLE inquiries DROP COLUMN workflow_status; DROP TABLE admin_sessions; DROP TABLE administrators; UPDATE app_metadata SET value='real-sales'; PRAGMA user_version=1"); db.close();
   assert.throws(() => openInquiryStore(file));
   db = new DatabaseSync(file); assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1); assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='administrators'").get().n, 0); db.close();
 });
@@ -221,7 +221,7 @@ test('internal session DB failures are sanitized and roll back previous-session 
 test('unauthenticated callers get no session secrets or inquiry listing; no default account is created', async t => {
   const api = await fixture(t, { initialized: false });
   const response = await api.get(); assert.equal(response.status, 401); assert.deepEqual(await response.json(), { error: 'Authentication required' });
-  for (const route of ['/api/admin/inquiries', '/api/admin/bootstrap', '/admin', '/scripts/admin-bootstrap.js', '/src/admin/password.js', '/api/sales/inquiries']) assert.equal((await fetch(api.root + route)).status, 404);
+  for (const route of ['/api/admin/bootstrap', '/admin', '/scripts/admin-bootstrap.js', '/src/admin/password.js', '/api/sales/inquiries']) assert.equal((await fetch(api.root + route)).status, 404);
   assert.equal((await api.post('/api/lead', inquiry)).status, 201);
 });
 
@@ -240,7 +240,7 @@ test('failed v1 migration rolls back without deleting inquiries or advancing sch
   const { dir, file } = directory(t); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = openInquiryStore(file), id = store.save(inquiry); store.close();
   let db = new DatabaseSync(file);
-  db.exec('DROP TABLE admin_sessions; DROP TABLE administrators; CREATE TABLE administrators (unexpected TEXT); PRAGMA user_version=1'); db.close();
+  db.exec('DROP TABLE inquiry_status_events; DROP INDEX inquiries_scope; ALTER TABLE inquiries DROP COLUMN workflow_status; DROP TABLE admin_sessions; DROP TABLE administrators; CREATE TABLE administrators (unexpected TEXT); PRAGMA user_version=1'); db.close();
   assert.throws(() => openInquiryStore(file));
   db = new DatabaseSync(file);
   assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);

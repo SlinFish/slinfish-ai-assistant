@@ -76,8 +76,8 @@ test('stored inquiry has secure ID, strict metadata, only submitted data and sev
   assert.match(result.inquiryId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.ok(!JSON.stringify(result).includes(sample.contact));
   const db = new DatabaseSync(file), row = db.prepare('SELECT * FROM inquiries WHERE id=?').get(result.inquiryId);
-  assert.deepEqual({ ...row }, { id: result.inquiryId, business_id: 'hotel', name: sample.name, contact: sample.contact, question: sample.question, consent: 1, status: 'new', created_at: time, updated_at: time, expires_at: time + RETENTION_MS, version: 1 });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2); db.close();
+  assert.deepEqual({ ...row }, { id: result.inquiryId, business_id: 'hotel', name: sample.name, contact: sample.contact, question: sample.question, consent: 1, status: 'new', created_at: time, updated_at: time, expires_at: time + RETENTION_MS, version: 1, workflow_status: 'new' });
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3); db.close();
 });
 test('parameterized writes preserve SQL injection text and business-scoped reads enforce isolation', t => {
   const store = openInquiryStore(storage(t)); onCleanup(t, () => store.close());
@@ -156,7 +156,7 @@ test('stored records, DB files and sales/admin routes are not publicly accessibl
   const api = await app(t, { dbPath: storage(t) });
   const result = await (await api.post(sample)).json();
   for (const route of ['/api/lead', '/api/leads', '/api/inquiries', '/api/lead/' + result.inquiryId, '/api/sales/inquiries', '/api/admin/inquiries', '/inquiries.sqlite', '/data/inquiries.sqlite', '/.git/config', '/src/inquiries/sqlite.js']) {
-    const response = await fetch(api.root + route); assert.equal(response.status, 404);
+    const response = await fetch(api.root + route); assert.equal(response.status, route === '/api/admin/inquiries' ? 401 : 404);
     const body = await response.text(); assert.ok(!body.includes(sample.contact));
   }
   assert.equal((await api.post(sample, { method: 'GET', body: undefined })).status, 404);

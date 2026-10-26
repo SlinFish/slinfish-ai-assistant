@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { isBusiness } from '../businesses.js';
 import { validateInquiry } from './validation.js';
 import { migrateAdminSchema, adminRepository } from '../admin/schema.js';
+import { migrateManagement, managementRepository } from './management.js';
 const ROOT = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
 const APP_ID = 0x534c494e;
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -36,7 +37,7 @@ export function openInquiryStore(input, { requireExisting = false, allowMigratio
     db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=1000;');
     const version = db.prepare('PRAGMA user_version').get().user_version;
     const appId = db.prepare('PRAGMA application_id').get().application_id;
-    if (!allowMigration && version !== 2) throw new Error('Current schema required');
+    if (!allowMigration && ![2, 3].includes(version)) throw new Error('Current schema required');
     if (version === 0) {
       const tables = db.prepare("SELECT count(*) AS total FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").get().total;
       if (tables !== 0 || appId !== 0) throw new Error('Unrecognized database');
@@ -58,9 +59,9 @@ export function openInquiryStore(input, { requireExisting = false, allowMigratio
         ) STRICT;
         CREATE INDEX inquiries_business_created ON inquiries(business_id,created_at,id);
         PRAGMA application_id=${APP_ID}; PRAGMA user_version=1; COMMIT;`);
-    } else if (![1, 2].includes(version) || appId !== APP_ID) throw new Error('Unsupported database');
+    } else if (![1, 2, 3].includes(version) || appId !== APP_ID) throw new Error('Unsupported database');
     if (db.prepare("SELECT value FROM app_metadata WHERE key='realm'").get()?.value !== 'fictional-demo') throw new Error('Incorrect storage realm');
-    if (allowMigration) migrateAdminSchema(db);
+    if (allowMigration) { migrateAdminSchema(db); migrateManagement(db); }
     db.exec('PRAGMA journal_mode=WAL;');
     const insert = db.prepare(`INSERT INTO inquiries
       (id,business_id,name,contact,question,consent,status,created_at,updated_at,expires_at,version)
@@ -68,8 +69,10 @@ export function openInquiryStore(input, { requireExisting = false, allowMigratio
     const get = db.prepare('SELECT * FROM inquiries WHERE business_id=? AND id=?');
     const count = db.prepare('SELECT count(*) AS total FROM inquiries');
     let closed = false;
+    const admin = adminRepository(db);
     return {
-      admin: adminRepository(db),
+      admin,
+      management: db.prepare('PRAGMA user_version').get().user_version === 3 ? managementRepository(db, admin) : undefined,
       save(value, now = Date.now()) {
         const inquiry = validateInquiry(value);
         const id = randomUUID();

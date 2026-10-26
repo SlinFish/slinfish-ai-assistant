@@ -32,6 +32,10 @@ export function adminOrigin(req, port, mutation) {
   if (req.headers['sec-fetch-site'] === 'cross-site') throw new RequestError(403, 'Administrator request not allowed');
   return { origin, secure };
 }
+export function assertCsrf(session, suppliedCsrf) {
+  if (typeof suppliedCsrf !== 'string' || !tokenPattern.test(suppliedCsrf)
+    || !timingSafeEqual(Buffer.from(suppliedCsrf), Buffer.from(session.csrfToken))) throw new RequestError(403, 'Administrator request not allowed');
+}
 export function createAdminAuth(repository, now = Date.now) {
   const dummy = dummyCredential();
   let verifying = false;
@@ -51,13 +55,13 @@ export function createAdminAuth(repository, now = Date.now) {
     },
     authenticate(header, secure, origin) {
       const token = readSessionCookie(header, secure);
-      if (!token || !repository?.session(tokenHash(token), origin, now())) throw new RequestError(401, 'Authentication required');
-      return { hash: tokenHash(token), csrfToken: csrf(token) };
+      const row = token ? repository?.session(tokenHash(token), origin, now()) : undefined;
+      if (!row) throw new RequestError(401, 'Authentication required');
+      return { hash: tokenHash(token), csrfToken: csrf(token), absoluteExpiresAt: row.absolute_expires_at };
     },
-    touch(session) { repository.touch(session.hash, now(), IDLE_MS); },
+    touch(session) { const time = now(); repository.touch(session.hash, time, IDLE_MS); return Math.min(time + IDLE_MS, session.absoluteExpiresAt); },
     logout(session, suppliedCsrf) {
-      if (typeof suppliedCsrf !== 'string' || !tokenPattern.test(suppliedCsrf)
-        || !timingSafeEqual(Buffer.from(suppliedCsrf), Buffer.from(session.csrfToken))) throw new RequestError(403, 'Administrator request not allowed');
+      assertCsrf(session, suppliedCsrf);
       repository.revoke(session.hash, now());
     }
   };

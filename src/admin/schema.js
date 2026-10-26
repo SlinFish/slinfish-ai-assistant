@@ -1,7 +1,7 @@
 // Version 2 is additive: existing inquiries and their IDs/metadata are untouched.
 export function migrateAdminSchema(db) {
   const version = db.prepare('PRAGMA user_version').get().user_version;
-  if (version === 2) return;
+  if (version === 2 || version === 3) return;
   if (version !== 1) throw new Error('Unsupported migration');
   db.exec(`BEGIN IMMEDIATE;
     CREATE TABLE administrators (

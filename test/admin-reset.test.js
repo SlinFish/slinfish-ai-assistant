@@ -52,7 +52,7 @@ test('reset uses fresh scrypt credentials, preserves inquiries/admin metadata/sc
   assert.notEqual(after.admin.password_hash, before.admin.password_hash);
   assert.equal(await verifyPassword(NEW, after.admin), true); assert.equal(await verifyPassword(OLD, after.admin), false);
   for (const field of ['id', 'enabled', 'created_at', 'scrypt_n', 'scrypt_r', 'scrypt_p']) assert.equal(after.admin[field], before.admin[field]);
-  assert.deepEqual(after.inquiries, before.inquiries); assert.equal(after.version, 2);
+  assert.deepEqual(after.inquiries, before.inquiries); assert.equal(after.version, 3);
   assert.equal(after.sessions.length, before.sessions.length);
   assert.ok(after.sessions.every(row => row.revoked_at !== null));
 });
@@ -96,7 +96,7 @@ test('corrupt, wrong-realm, memory, relative and older-schema databases are reje
   rmSync(file); const store = openInquiryStore(file), id = store.save(sample); store.close();
   let db = new DatabaseSync(file); db.exec("UPDATE app_metadata SET value='real-sales'"); db.close();
   assert.equal(await reset(file, never), false);
-  db = new DatabaseSync(file); db.exec("UPDATE app_metadata SET value='fictional-demo'; DROP TABLE admin_sessions; DROP TABLE administrators; PRAGMA user_version=1"); db.close();
+  db = new DatabaseSync(file); db.exec("UPDATE app_metadata SET value='fictional-demo'; DROP TABLE inquiry_status_events; DROP INDEX inquiries_scope; ALTER TABLE inquiries DROP COLUMN workflow_status; DROP TABLE admin_sessions; DROP TABLE administrators; PRAGMA user_version=1"); db.close();
   assert.equal(await reset(file, never), false);
   db = new DatabaseSync(file);
   assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
