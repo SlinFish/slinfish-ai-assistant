@@ -82,6 +82,19 @@ export function createServer({ dbPath, now = Date.now, rateLimit, adminRateLimit
         }
         throw new RequestError(404, 'Not found');
       }
+      if (['/admin', '/admin/login', '/admin.js', '/admin.css'].includes(url.pathname)) {
+        const context = adminOrigin(req, server.address().port, false);
+        if (req.method !== 'GET') throw new RequestError(405, 'Method not allowed');
+        if (url.pathname === '/admin') {
+          try { auth.authenticate(req.headers.cookie, context.secure, context.origin); }
+          catch (error) {
+            if (error instanceof RequestError && error.status === 401) return reply(res, 303, '', 'text/plain', { Location: '/admin/login' });
+            throw error;
+          }
+        }
+        const file = url.pathname === '/admin.js' ? 'admin.js' : url.pathname === '/admin.css' ? 'admin.css' : 'admin.html';
+        return reply(res, 200, await readFile(new URL(file, publicDir)), file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8', { 'Referrer-Policy': 'no-referrer' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/businesses') return reply(res, 200, businesses);
       if (req.method === 'POST' && ['/api/lead', '/api/chat'].includes(url.pathname)) {
         if (req.headers.origin) {

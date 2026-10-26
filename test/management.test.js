@@ -1,4 +1,5 @@
 import test from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -120,4 +121,42 @@ test('additive v2 migration preserves every legacy field and never guesses won/l
   assert.deepEqual(after, before); assert.equal(workflow, null);
   const detail = store.management.detail('hotel', id); assert.equal(detail.status, 'legacy_closed'); assert.deepEqual(detail.allowedStatuses, ['won', 'lost']); assert.deepEqual(detail.history.events, []);
   store.close(); db = new DatabaseSync(file); assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3); db.close();
+});
+test('dashboard pages are local-only, protected and contain no embedded inquiry records', async t => {
+  const api = await fixture(t);
+  const redirect = await fetch(api.root + '/admin', { redirect: 'manual' });
+  assert.equal(redirect.status, 303); assert.equal(redirect.headers.get('location'), '/admin/login');
+  for (const route of ['/admin/login', '/admin.js', '/admin.css']) {
+    const response = await fetch(api.root + route); assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.ok(response.headers.get('content-security-policy').includes("frame-ancestors 'none'"));
+    const text = await response.text(); assert.ok(!text.includes(sample.contact)); assert.ok(!text.includes(api.id));
+    const badHost = await new Promise((resolve, reject) => {
+      const req = http.request(api.root + route, { headers: { Host: 'evil.invalid' } }, res => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject); req.end();
+    });
+    assert.equal(badHost, 403);
+    assert.equal((await fetch(api.root + route, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+  }
+  const page = await api.get('/admin'); assert.equal(page.status, 200);
+  const text = await page.text(); assert.ok(text.includes('type="password"')); assert.ok(text.includes('aria-live'));
+  assert.ok(!text.includes(sample.contact)); assert.ok(!text.includes(api.id));
+  api.advance(30 * 60 * 1000);
+  assert.equal((await fetch(api.root + '/admin', { headers: { Cookie: api.cookie }, redirect: 'manual' })).status, 303);
+});
+test('failed management migration rolls back the new column and leaves legacy inquiries intact', t => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'slinfish-migration-failure-')), file = path.join(dir, 'demo.sqlite');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const store = openInquiryStore(file); const id = store.save(sample); store.close();
+  let db = new DatabaseSync(file);
+  db.exec('DROP TABLE inquiry_status_events; DROP INDEX inquiries_scope; ALTER TABLE inquiries DROP COLUMN workflow_status; PRAGMA user_version=2; CREATE TABLE inquiry_status_events (collision TEXT)');
+  const before = { ...db.prepare('SELECT * FROM inquiries WHERE id=?').get(id) }; db.close();
+  assert.throws(() => openInquiryStore(file));
+  db = new DatabaseSync(file);
+  try {
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.deepEqual({ ...db.prepare('SELECT * FROM inquiries WHERE id=?').get(id) }, before);
+    assert.ok(!db.prepare('PRAGMA table_info(inquiries)').all().some(column => column.name === 'workflow_status'));
+  } finally { db.close(); }
 });

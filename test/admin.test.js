@@ -221,7 +221,7 @@ test('internal session DB failures are sanitized and roll back previous-session 
 test('unauthenticated callers get no session secrets or inquiry listing; no default account is created', async t => {
   const api = await fixture(t, { initialized: false });
   const response = await api.get(); assert.equal(response.status, 401); assert.deepEqual(await response.json(), { error: 'Authentication required' });
-  for (const route of ['/api/admin/bootstrap', '/admin', '/scripts/admin-bootstrap.js', '/src/admin/password.js', '/api/sales/inquiries']) assert.equal((await fetch(api.root + route)).status, 404);
+  for (const route of ['/api/admin/bootstrap', '/scripts/admin-bootstrap.js', '/src/admin/password.js', '/api/sales/inquiries']) assert.equal((await fetch(api.root + route)).status, 404);
   assert.equal((await api.post('/api/lead', inquiry)).status, 201);
 });
 

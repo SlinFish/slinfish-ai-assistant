@@ -1,8 +1,8 @@
-# SlinFish AI Business Assistant — local inquiry foundation
+# SlinFish AI Business Assistant — local demo inquiry management
 
 A rules-based demonstration for four **fictional** businesses. Node.js **24.x** is required (tested with 24.19.0; see `.node-version`) for built-in `node:sqlite`. No third-party packages, paid APIs, database account, deployment or API keys are needed.
 
-This branch starts from main independently of Gemini PR #1. It includes no Gemini, OpenRouter, AI provider requests, administrative dashboard, real SlinFish sales capture or notifications. **Use fictional test data only. Do not expose this milestone publicly or use it for real customers.**
+This branch starts from main independently of Gemini PR #1. It includes no Gemini, OpenRouter, AI provider requests, real SlinFish sales capture or notifications. **Use fictional test data only. Do not expose this milestone publicly or use it for real customers.**
 
 ## Defaults and configuration
 
@@ -37,16 +37,18 @@ With persistence configured, successful committed storage returns HTTP **201**, 
 
 Rows contain only the submitted business/name/contact/question/consent plus server-generated UUID v4, initial status `new`, UTC millisecond `created_at`/`updated_at`, `expires_at` seven days after creation, and initial `version: 1`. No IP addresses, Origin, browser metadata, chat history or extra request properties are stored. Free-form values cannot be reliably proven fictional by validation: operators must use synthetic values and keep the service local.
 
-SQLite uses schema version 2 (`PRAGMA user_version`), an application identifier and `fictional-demo` realm metadata. Initialization is transactional. STRICT tables, CHECK constraints, an index by business/time, prepared values, WAL mode, a bounded busy timeout and transactions protect integrity. All inserts are validated again at the repository boundary; internal reads require both business and inquiry ID. There is no unscoped read/list API. Existing version 1 databases migrate transactionally to version 2 by adding administrator/session tables; inquiries are preserved exactly. Realm and application identity are checked before migration. Version 2 opens idempotently; unknown versions fail closed. Before upgrading an existing demo database, stop writers and make a private consistent backup; do not copy only the main file while WAL is active. Future migrations must be explicit, never reset unknown data.
+SQLite uses schema version **3** (`PRAGMA user_version`), an application identifier and `fictional-demo` realm metadata. STRICT tables, constraints, prepared values, WAL mode and a bounded busy timeout protect integrity. Existing version 1 databases receive the administrator migration, then version 2 databases receive the additive management migration. No inquiry rows are rebuilt or deleted. Existing fields and credentials are preserved; unknown versions and wrong realms fail closed. Before upgrading, stop writers and make a private consistent backup; do not copy just the main file while WAL is active. Older application commits cannot open schema 3.
+
+The new `workflow_status` is authoritative for management. The original `status` column remains a preserved legacy field. Existing new/contacted/qualified values are copied; old closed records become `legacy_closed` in the API until explicitly classified won/lost. No historical outcome is guessed. A new scoped status-event table records previous/new state, administrator ID, time and resulting version atomically with each update. See [the migration, workflow and API contract](docs/lead-dashboard-api.md).
 
 The database has a **200-inquiry cap**. At capacity or a write/lock/storage failure, the endpoint returns sanitized HTTP 503 and does not claim success, overwrite earlier inquiries, or switch stores. HTTP 400/413/415 cover invalid fields/JSON, oversized bodies, and unsupported media types; HTTP 403 rejects cross-origin browser submissions.
 
 Submission limits apply before parsing both valid and invalid inquiry attempts: **5 per socket IP per minute**, **50 per process per minute**, with at most 1000 active client entries. HTTP 429 includes `Retry-After`. Forwarded-IP headers are ignored. Limiter state is short-lived in memory and resets on restart; it is not distributed and shared/NAT users share a bucket. The app does not log submission bodies or contact data.
 
-`GET /api/businesses`, rules-based `POST /api/chat`, and the existing public page/assets remain. There is **no inquiry listing, lookup, status-update, deletion, dashboard or real-sales route**. The administrator endpoints below expose authentication metadata only, never inquiry data. Static files are explicitly allowlisted. CSP/no-store/nosniff headers and textContent rendering reduce accidental exposure. Database files and server modules are not served.
+`GET /api/businesses`, rules-based `POST /api/chat`, and the existing public page/assets remain. Inquiry listing, details, history and status changes require administrator authentication; there are **no public inquiry-reading, deletion or real-sales routes**. Static files are explicitly allowlisted. CSP/no-store/nosniff headers and textContent rendering reduce accidental exposure. Database files and server modules are not served.
 
 
-## Local administrator authentication (no dashboard)
+## Local administrator authentication
 
 No administrator exists by default. Starting the app, running tests, migrations or setting an environment variable never supplies a default passphrase or creates an owner. One local owner is created only by explicitly invoking:
 
@@ -195,11 +197,11 @@ Do not inspect or print the web-session cookie collection, login JSON, `$auth`, 
 node scripts/admin-reset.js
 ```
 
-Reset requires the **existing configured private schema-v2 fictional-demo database**, an existing administrator, and interactive stdin/stdout/stderr. It rejects all arguments, piped input and missing/invalid databases before prompting; it does not accept passphrases from environment variables. A mistyped missing file is not created, and an older schema is not migrated by reset. Bootstrap remains one-time and cannot overwrite the owner.
+Reset requires the **existing configured private schema-2 or schema-3 fictional-demo database**, an existing administrator, and interactive stdin/stdout/stderr. It rejects all arguments, piped input and missing/invalid databases before prompting; it does not accept passphrases from environment variables. A mistyped missing file is not created, and an older schema is not migrated by reset. Bootstrap remains one-time and cannot overwrite the owner.
 
-The CLI prompts twice with echo/history disabled and reuses the existing 16–128-character policy and scrypt implementation. Choose a new, different, unique passphrase. Each reset generates a fresh random salt. Credential replacement and revocation of all existing sessions commit in **one SQLite transaction**; a failure rolls both back. Inquiries (including IDs, business scope, status, timestamps, expiry and version), administrator ID/creation time/enabled state, and schema version 2 are preserved. Reset does not create or re-enable an administrator. Future logins also check that the credential snapshot verified by asynchronous scrypt is still current before issuing a session, preventing an in-flight old-password login from surviving reset.
+The CLI prompts twice with echo/history disabled and reuses the existing 16–128-character policy and scrypt implementation. Choose a new, different, unique passphrase. Each reset generates a fresh random salt. Credential replacement and revocation of all existing sessions commit in **one SQLite transaction**; a failure rolls both back. Inquiries (including IDs, business scope, status, timestamps, expiry and version), administrator ID/creation time/enabled state, and the existing schema version are preserved. Reset does not create or re-enable an administrator. Future logins also check that the credential snapshot verified by asynchronous scrypt is still current before issuing a session, preventing an in-flight old-password login from surviving reset.
 
-Successful output is only `Local administrator passphrase reset; all sessions revoked.` Failure output is fixed and omits the reason, passphrases, salts, hashes, tokens, database path and exceptions. Exit status is 0 on success and 1 on rejection/failure. There is no password-reset HTTP endpoint, recovery token, email, default password or dashboard. Tests and terminal smoke checks use only synthetic credentials and temporary databases.
+Successful output is only `Local administrator passphrase reset; all sessions revoked.` Failure output is fixed and omits the reason, passphrases, salts, hashes, tokens, database path and exceptions. Exit status is 0 on success and 1 on rejection/failure. There is no password-reset HTTP endpoint, recovery token, email or default password. Tests and terminal smoke checks use only synthetic credentials and temporary databases.
 
 **Owner-control boundary:** recovery does not require knowledge of the old passphrase. Permission to use your Windows account and read/write the protected database effectively grants permission to take over the application administrator. Protect the Windows sign-in, lock the screen, keep the dedicated NTFS directory owner-restricted, and do not share that Windows account. This cannot defend against malware or another process already running as the same OS user, or an OS administrator with filesystem access. Keep SQLite/WAL files and backups private; do not copy them into Git, public folders or cloud environment snapshots. Restoring an old backup may restore old credential/session state: perform a reset against the restored database before allowing login, and reconcile inquiry deletion/retention separately. JavaScript cannot guarantee erasure of transient passphrase strings, and SQLite/WAL/backups may retain historical hashes. No forensic-erasure claim is made.
 
@@ -282,12 +284,84 @@ $newSession = $null
 Write-Host 'New administrator login/session/logout verified.'
 ```
 
-Do not print the web-session objects, passphrase bodies, headers or CSRF values. Clearing variables limits accidental reuse but does not guarantee secret erasure from process memory. A successful new login revokes prior sessions normally; the old-password failure check must happen first. Automated tests separately compare complete inquiry rows before/after reset and inject a revocation failure to verify transactional rollback. Reset does not implement inquiry deletion, backups or any dashboard feature.
+Do not print the web-session objects, passphrase bodies, headers or CSRF values. Clearing variables limits accidental reuse but does not guarantee secret erasure from process memory. A successful new login revokes prior sessions normally; the old-password failure check must happen first. Automated tests separately compare complete inquiry rows before/after reset and inject a revocation failure to verify transactional rollback. Reset does not implement inquiry deletion or backups; it is independent of the dashboard.
 
 ## Current limits and next review
 
-This includes inquiry persistence and local authentication, but not the dashboard/management system described in [the architecture](docs/lead-management-architecture.md). One-owner local authentication and sessions are implemented, but no dashboard, durable abuse protection, request idempotency, encryption-at-rest, backup/restore workflow, retention purge, or inquiry deletion controls are implemented. **Expiry is metadata only at this stage**: records are not automatically erased after seven days, and all retained rows count toward the cap. Do not accept real personal information. Database isolation is not authentication against another process running as the same OS user; path checks assume an operator-controlled private directory, not a hostile filesystem.
+Inquiry persistence, one-owner authentication, sessions and the local dashboard are implemented. Durable abuse protection, request idempotency, encryption-at-rest, backup/restore workflows, retention purge and inquiry deletion controls remain unimplemented. **Expiry is metadata only at this stage**: records are not automatically erased after seven days, and all retained rows count toward the cap. Do not accept real personal information. Database isolation is not authentication against another process running as the same OS user; path checks assume an operator-controlled private directory, not a hostile filesystem.
 
 Synchronous SQLite can briefly block the event loop, including up to the one-second busy timeout; this is a bounded local demonstration. Process-local rate limiting is bypassable by restart and is not sufficient for a public service. No production multi-tenant guarantees are claimed. Contact/name/question content has format/length checks, not a guarantee of accuracy or fictionality. A dropped response after COMMIT can lead to duplicate manual submissions.
 
-Real SlinFish sales capture remains disabled: no such business ID or route exists. No external AI receives inquiries. Any next milestone, dashboard, deployment, real-data use or further migration requires review and separate approval. Nothing is merged into main.
+Real SlinFish sales capture remains disabled: no such business ID or route exists. No external AI receives inquiries. Any next milestone, deployment, real-data use or further migration requires review and separate approval. Nothing is merged into main.
+
+## Local administrator dashboard (Task 2D)
+
+After configuring the private database and explicitly bootstrapping the owner as above, open **http://127.0.0.1:3000/admin**. Unauthenticated requests redirect to `/admin/login`. Both pages and their assets enforce the existing loopback/Host/Origin checks; pages embed no inquiry records. The browser obtains records only through authenticated, no-store APIs. Without configured storage or an owner, sign-in fails safely; no account is created automatically.
+
+Filter by business and status, page through newest inquiries, open details, review allowed next statuses and update. The workflow is `new → contacted → qualified → won/lost`, with explicit lost and reopen paths in [the API contract](docs/lead-dashboard-api.md). Every write checks the observed version, CSRF token, origin and live session inside the transaction. A stale write returns 409; the UI reloads details for review and never retries a mutation automatically. Status history is paginated. At 10000 audit events further writes fail safely without deleting history.
+
+Passphrases are cleared from the login field immediately; CSRF state stays in memory. Submitted text uses `textContent`, never HTML interpolation. Loading, empty, safe-error and session-expired states are provided. Visible labels, table headers/caption, focus indicators, keyboard controls and responsive scrolling support accessibility. Logout, session expiry and page departure clear displayed inquiry data; late responses cannot restore it. Client expiry uses server metadata and never extends the server deadline. Browser/OS owners can still inspect process memory; these controls do not secure a compromised machine. Avoid shared browser profiles, screenshots and session recording.
+
+### Exact Windows PowerShell dashboard verification
+
+Run the complete test/syntax/whitespace commands in the earlier verification section. Use Node 24.x. Stop the server and privately back up any existing database before the first schema-3 startup. In a private interactive PowerShell console at the repository root:
+
+```powershell
+$env:INQUIRY_DB_PATH = Join-Path $env:LOCALAPPDATA 'SlinFishDemo\inquiries.sqlite'
+# Use the protected directory/ACL setup above first if this is a new installation.
+# Run ONLY if no administrator exists; never pass a password as an argument.
+node scripts/admin-bootstrap.js
+# Existing owners skip bootstrap. It intentionally rejects a second owner.
+$env:PORT = '3000'
+npm.cmd start
+```
+
+In a second private PowerShell console, open the interface:
+
+```powershell
+Start-Process 'http://127.0.0.1:3000/admin'
+```
+
+Sign in using the existing owner passphrase. Check keyboard navigation, filter/empty states, detail focus, mobile-width scrolling, allowed transitions and history. Sign out and confirm details disappear and `/admin` requires sign-in. Do not use real contacts. Browser accessibility and Windows ACLs require manual review; automated checks here ran on Linux.
+
+For an HTTP verification using **one newly submitted fictional record only**, run this in that second terminal without transcription, verbose HTTP debugging or printing session objects. The passphrase is prompted securely, kept transiently in memory for the local login, and never placed in command history:
+
+```powershell
+$origin = 'http://127.0.0.1:3000'
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$secure = Read-Host 'Existing local administrator passphrase' -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try {
+    $loginBody = @{ password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) } | ConvertTo-Json -Compress
+    $auth = Invoke-RestMethod "$origin/api/admin/login" -Method Post -WebSession $session -ContentType 'application/json' -Headers @{ Origin = $origin } -Body $loginBody
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    Remove-Variable loginBody,secure,ptr -ErrorAction SilentlyContinue
+}
+$fixture = @{ business = 'hotel'; name = 'Fictional Dashboard Tester'; contact = 'dashboard@example.invalid'; question = 'Fictional dashboard verification only'; consent = $true } | ConvertTo-Json
+$receipt = Invoke-RestMethod "$origin/api/lead" -Method Post -ContentType 'application/json' -Headers @{ Origin = $origin } -Body $fixture
+if (-not $receipt.stored) { throw 'Local storage is not enabled.' }
+$path = "$origin/api/admin/businesses/hotel/inquiries/$($receipt.inquiryId)"
+$page = Invoke-RestMethod "$origin/api/admin/inquiries?business=hotel&status=new" -WebSession $session
+if (-not ($page.inquiries | Where-Object { $_.id -eq $receipt.inquiryId })) { throw 'New inquiry was not listed.' }
+$detail = Invoke-RestMethod $path -WebSession $session
+$headers = @{ Origin = $origin; 'X-CSRF-Token' = $auth.csrfToken }
+$change = @{ status = 'contacted'; version = $detail.version } | ConvertTo-Json
+$updated = Invoke-RestMethod $path -Method Patch -WebSession $session -ContentType 'application/json' -Headers $headers -Body $change
+if ($updated.status -ne 'contacted' -or $updated.version -ne ($detail.version + 1)) { throw 'Status update failed.' }
+try {
+    $null = Invoke-RestMethod $path -Method Patch -WebSession $session -ContentType 'application/json' -Headers $headers -Body $change
+    throw 'Stale update unexpectedly succeeded.'
+} catch {
+    if ($null -eq $_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 409) { throw 'Expected HTTP 409 for stale version.' }
+}
+$audit = Invoke-RestMethod "$path/history" -WebSession $session
+if ($audit.events.Count -ne 1 -or $audit.events[0].previousStatus -ne 'new' -or $audit.events[0].status -ne 'contacted') { throw 'Audit verification failed.' }
+$null = Invoke-RestMethod "$origin/api/admin/logout" -Method Post -WebSession $session -ContentType 'application/json' -Headers $headers -Body '{}'
+Remove-Variable session,auth,headers,detail,updated,page,audit,change,fixture,receipt,path -ErrorAction SilentlyContinue
+Write-Output 'Fictional dashboard HTTP verification passed.'
+```
+
+This deliberately retains the synthetic inquiry and its audit record; no deletion endpoint exists. Logging in from PowerShell revokes an earlier browser session, so sign in again in the browser afterwards. Do not print credentials, cookies or CSRF tokens. This example assumes the new record appears in the first 25 matching inquiries; refresh/filter in the UI if the local database has many records.
+
+Recommended follow-up: manual Windows/browser/accessibility review, owner-approved private backup/restore and retention/deletion controls, then a separately reviewed abuse/privacy model before considering real data or any deployment. The audit is not tamper-proof against the database owner; there are no separate business roles or additional administrators. This local demonstration is not production-ready.
