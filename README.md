@@ -1,8 +1,8 @@
 # SlinFish AI Business Assistant — local demo inquiry management
 
-A rules-based demonstration for four **fictional** businesses. Node.js **24.x** is required (tested with 24.19.0; see `.node-version`) for built-in `node:sqlite`. No third-party packages, paid APIs, database account, deployment or API keys are needed.
+A grounded-chat demonstration for four **fictional** businesses. Node.js **24.x** is required (tested with 24.19.0; see `.node-version`) for built-in `node:sqlite`. No third-party packages, paid APIs, database account, deployment or API keys are needed.
 
-This branch starts from main independently of Gemini PR #1. It includes no Gemini, OpenRouter, AI provider requests, real SlinFish sales capture or notifications. **Use fictional test data only. Do not expose this milestone publicly or use it for real customers.**
+Phase AI-1 integrates grounded chat from `feat/grounded-ai-knowledge` into `backup/current-local-version` while retaining its Node server, schema v3, inquiry contracts, administrator authentication and dashboard. Demo mode remains the default; Gemini is optional and requires an explicit server-side key. It includes no real SlinFish sales capture or notifications. **Use fictional test data only. Do not expose this milestone publicly or use it for real customers.**
 
 ## Defaults and configuration
 
@@ -51,7 +51,27 @@ The database has a **200-inquiry cap**. At capacity or a write/lock/storage fail
 
 Submission limits apply before parsing both valid and invalid inquiry attempts: **5 per socket IP per minute**, **50 per process per minute**, with at most 1000 active client entries. HTTP 429 includes `Retry-After`. Forwarded-IP headers are ignored. Limiter state is short-lived in memory and resets on restart; it is not distributed and shared/NAT users share a bucket. The app does not log submission bodies or contact data.
 
-`GET /api/businesses`, rules-based `POST /api/chat`, and the existing public page/assets remain. Inquiry listing, details, history and status changes require administrator authentication; there are **no public inquiry-reading, deletion or real-sales routes**. Static files are explicitly allowlisted. CSP/no-store/nosniff headers and textContent rendering reduce accidental exposure. Database files and server modules are not served.
+`GET /api/businesses`, grounded `POST /api/chat`, and the existing public page/assets remain. Inquiry listing, details, history and status changes require administrator authentication; there are **no public inquiry-reading, deletion or real-sales routes**. Static files are explicitly allowlisted. CSP/no-store/nosniff headers and textContent rendering reduce accidental exposure. Database files and server modules are not served.
+
+## Grounded chat (Phase AI-1 complete)
+
+`POST /api/chat` accepts exactly `{ "business": "hotel", "message": "What is check-in?" }`. Business IDs retain the inquiry allowlist. Messages must be nonblank, well-formed strings of at most 1000 UTF-16 code units, with the existing control-character rules. The shared 12000-byte JSON body limit, unsupported-encoding rejection and local Origin checks still apply. Extra fields (including history, contact, credentials, model and key) are rejected. Chat has its own bounded limiter: **20 attempts per socket IP and 100 per server per minute**, up to 1000 active client entries. Invalid attempts count before body parsing; forwarded IP headers are ignored. Inquiry and login buckets are independent. Cross-origin requests are rejected before consuming a bucket.
+
+The handler retrieves only the selected business's immutable static FAQ knowledge. Supported questions match the approved aliases in `src/knowledge.js` (case, whitespace and a final question mark may vary). Demo mode selects the matching approved fact locally. Unknown, compound, cross-business and other free-form messages receive a safe handoff without an external request. This deliberately conservative coverage prevents raw message contents, including embedded contact information, from leaving the server. It does not provide unrestricted semantic question answering.
+
+Gemini receives only the canonical static question alias and selected business knowledge. The chat module has no database or authentication dependency; inquiry records, customer contacts, administrator credentials, cookies, CSRF tokens and chat history never enter its provider payload. No chat history is stored. Gemini can return a fact ID and confidence only; the server requires that ID to match the locally selected fact and renders the approved text. Generated prose, other-business facts and unrelated same-business facts cannot become answers.
+
+Successful answers and unknown-question handoffs return HTTP 200 with `message`, `mode` (`demo` or `gemini`), `handoff` and `sources` (scoped `business:factId` identifiers, empty for handoffs). Provider failure returns HTTP 503 with the same safe handoff plus `error: "assistant_unavailable"`; the public chat displays the handoff text. Throttling returns HTTP 429 with `Retry-After`. Inquiry API responses and the administrator UI are unchanged.
+
+Optional Gemini configuration is read only by executable startup; library `createServer()` remains explicitly demo by default. `.env` is not automatically loaded. Leave `AI_PROVIDER` unset or set it to `demo` for offline use. To opt in, set `AI_PROVIDER=gemini` and provide `GEMINI_API_KEY` through the server process's private environment, never client code, command history, logs or Git. A key alone does not enable Gemini. `AI_TIMEOUT_MS` defaults to 8000 and accepts integers 100–30000. `AI_MODEL`, if supplied, must equal the inherited pinned model `gemini-3.8-flash`. Unsupported providers, absent keys and invalid settings fail startup with a fixed generic error. OpenAI/OpenRouter and standalone live diagnostic commands are not included in this phase.
+
+There is one fixed HTTPS Gemini REST endpoint, a header key (never a URL key), no redirects, retries, model switching, paid fallback or automatic billing setup. A request deadline covers response reads, with a 32768-byte response cap and strict selection/envelope checks. Quota, authentication, network, timeout, malformed, blocked and truncated responses all fail safely. The pinned model and provider account availability have **not** been verified live. Opting in may consume the account's quota or incur charges under its existing settings; no free-tier availability is assumed or billing enabled here.
+
+`AI_DIAGNOSTICS=1` optionally logs only an allowlisted failure category, provider, phase, HTTP status and bounded elapsed time. It is off by default and never logs keys, bodies, messages, records, headers, errors/stacks or provider response text. There is no diagnostic API route. Use no live provider calls for verification: `npm test` mocks Gemini, requires no key and uses no paid services.
+
+### Future Hotel Demo work
+
+The `hotel` business here is the existing fictional Aster House FAQ. It is **not** integration with the separate Hotel Demo repository. Sharing knowledge/data, real hotel availability/rates, booking workflows, staff notifications, broader natural-language coverage, production hosting and any real customer use remain future work requiring separate review. Phase AI-1 makes no changes to that repository or deployment configuration.
 
 ## Local administrator authentication
 

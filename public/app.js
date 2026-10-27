@@ -37,7 +37,12 @@ async function post(url, payload) {
     body: JSON.stringify(payload),
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Request failed");
+  if (!response.ok)
+    throw new Error(
+      url === "/api/chat" && result.handoff === true
+        ? result.message
+        : result.error || "Request failed",
+    );
   return result;
 }
 $("chat").onsubmit = async (event) => {
