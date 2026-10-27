@@ -24,7 +24,13 @@ Relative paths, `:memory:`, SQLite URI paths, paths in the checkout/public tree 
 `POST /api/lead` requires UTF-8 `application/json` with exactly:
 
 ```json
-{"business":"hotel","name":"Fictional Tester","contact":"demo@example.invalid","question":"Fictional booking inquiry","consent":true}
+{
+  "business": "hotel",
+  "name": "Fictional Tester",
+  "contact": "demo@example.invalid",
+  "question": "Fictional booking inquiry",
+  "consent": true
+}
 ```
 
 - `business` must be one of the own keys `realestate`, `auto`, `retail`, `hotel`, as a string. Prototype names, coercible arrays/objects, unknown IDs and `slinfish` are rejected.
@@ -47,7 +53,6 @@ Submission limits apply before parsing both valid and invalid inquiry attempts: 
 
 `GET /api/businesses`, rules-based `POST /api/chat`, and the existing public page/assets remain. Inquiry listing, details, history and status changes require administrator authentication; there are **no public inquiry-reading, deletion or real-sales routes**. Static files are explicitly allowlisted. CSP/no-store/nosniff headers and textContent rendering reduce accidental exposure. Database files and server modules are not served.
 
-
 ## Local administrator authentication
 
 No administrator exists by default. Starting the app, running tests, migrations or setting an environment variable never supplies a default passphrase or creates an owner. One local owner is created only by explicitly invoking:
@@ -60,11 +65,11 @@ Use a private interactive terminal with `INQUIRY_DB_PATH` pointing to the existi
 
 Passphrases use asynchronous Node scrypt (`N=32768`, `r=8`, `p=3`, 64 MiB maximum memory), fresh 128-bit random salts, 64-byte derived hashes and timing-safe comparison. Only salted hashes and KDF parameters are persisted. Transient password strings must exist in client/server memory to perform authentication; JavaScript cannot guarantee their erasure. The bootstrap and server do not print them or write plaintext passwords to disk.
 
-| Endpoint | Request / result |
-| --- | --- |
-| `POST /api/admin/login` | Same-origin JSON with exactly `password`. Generic HTTP 401 for absent/disabled owner or wrong password. Success sets the session cookie and returns only `authenticated: true` and a CSRF token. No username is needed for this single-owner prototype. |
-| `GET /api/admin/session` | Requires a valid cookie; returns only authenticated state and the session-bound CSRF token. HTTP 401 for missing, expired, revoked or malformed/duplicate cookies. No hashes, raw session token or inquiry data in JSON. |
-| `POST /api/admin/logout` | Requires JSON `{}`, valid cookie, exact Origin and `X-CSRF-Token`. Revokes the session in SQLite and clears its cookie. Missing/incorrect CSRF is rejected with HTTP 403. |
+| Endpoint                 | Request / result                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/admin/login`  | Same-origin JSON with exactly `password`. Generic HTTP 401 for absent/disabled owner or wrong password. Success sets the session cookie and returns only `authenticated: true` and a CSRF token. No username is needed for this single-owner prototype. |
+| `GET /api/admin/session` | Requires a valid cookie; returns only authenticated state and the session-bound CSRF token. HTTP 401 for missing, expired, revoked or malformed/duplicate cookies. No hashes, raw session token or inquiry data in JSON.                                |
+| `POST /api/admin/logout` | Requires JSON `{}`, valid cookie, exact Origin and `X-CSRF-Token`. Revokes the session in SQLite and clears its cookie. Missing/incorrect CSRF is rejected with HTTP 403.                                                                               |
 
 All administrator requests require a direct loopback peer and an explicit local Host matching the listening port. Mutating requests require an exact Origin matching **that Host, scheme and port**. Missing/null/cross-origin Origins, cross-site Fetch Metadata and invalid/duplicate Hosts are rejected. Login uses mandatory Origin plus JSON enforcement against login CSRF; authenticated mutations additionally use a constant-time checked CSRF token derived from the session secret. A failed CSRF check does not revoke a legitimate session. There is no CORS access for another origin. `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` do not establish trust. These endpoints are not designed for a tunnel or reverse-proxy deployment.
 
@@ -135,7 +140,6 @@ Stop and restart `npm.cmd start` in the first terminal (its environment variable
 
 Do not expose the server through a tunnel/proxy or use a deployment host for this milestone. Do not copy only the main SQLite file while WAL is active; a future backup facility must take a consistent snapshot. Unsetting `INQUIRY_DB_PATH` disables subsequent storage but does not delete an existing database.
 
-
 ### Windows: one-time administrator setup and authentication checks
 
 Use a private Windows Terminal/PowerShell console, not ISE, a pipeline, output redirection or a recorded/debug session. Stop the running application before the initial migration/bootstrap and preserve a private consistent backup if you already have inquiries. Reuse the protected directory configured above; do not create a different database accidentally.
@@ -189,7 +193,6 @@ Write-Host 'Login, session and logout checks passed.'
 ```
 
 Do not inspect or print the web-session cookie collection, login JSON, `$auth`, or `$state`. The automated suite independently tests server-side replay rejection after logout even if the old cookie is retained, expiry, wrong-CSRF/Origin/Host rejection, session fixation, throttling, migration preservation and rollback behavior. Windows commands are provided for operator verification but were not executed on Windows here; actual masked-prompt behavior was checked in a Linux PTY with temporary synthetic credentials, then the database was removed.
-
 
 ## Owner-controlled local administrator passphrase reset
 

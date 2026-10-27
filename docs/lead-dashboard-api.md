@@ -15,13 +15,13 @@ No tables or inquiry rows are dropped/rebuilt. IDs, business scope, submitted fi
 
 ## Explicit transitions
 
-| Current state | Allowed next states |
-| --- | --- |
-| new | contacted, lost |
-| contacted | qualified, lost |
-| qualified | contacted, won, lost |
-| won | qualified (reopen for review) |
-| lost | contacted (reopen) |
+| Current state | Allowed next states                            |
+| ------------- | ---------------------------------------------- |
+| new           | contacted, lost                                |
+| contacted     | qualified, lost                                |
+| qualified     | contacted, won, lost                           |
+| won           | qualified (reopen for review)                  |
+| lost          | contacted (reopen)                             |
 | legacy_closed | won, lost (explicit historical classification) |
 
 A no-op or other transition is rejected. Legacy closed is a compatibility label, not a new selectable workflow target. Updates never extend inquiry retention. Current statuses are returned as `status` in API DTOs.

@@ -1,35 +1,155 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>SlinFish — Local inquiry administration</title><link rel="stylesheet" href="/admin.css"></head>
-<body>
-<a class="skip" href="#main">Skip to administration</a>
-<header><p class="badge">LOCAL ONLY · FICTIONAL DEMO DATA</p><h1>Inquiry administration</h1><a href="/">Return to fictional business demo</a></header>
-<main id="main">
-<p id="notice" role="status" aria-live="polite">Checking local session…</p><p id="error" role="alert"></p>
-<section id="login-panel" hidden aria-labelledby="login-heading">
-<h2 id="login-heading">Administrator sign in</h2><p>Use the passphrase set with the private local bootstrap command. There are no default credentials or public recovery links.</p>
-<form id="login-form"><label for="admin-password">Administrator passphrase</label><input id="admin-password" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" maxlength="128" required><button id="login-button" type="submit">Sign in</button></form>
-</section>
-<section id="dashboard" hidden aria-labelledby="dashboard-heading">
-<div class="toolbar"><h2 id="dashboard-heading" tabindex="-1">Fictional demo inquiries</h2><button id="logout" type="button">Sign out</button></div>
-<p>One local owner can manage all four fictional businesses. Sessions expire after 30 minutes idle or 8 hours absolute. Use fictional information only.</p>
-<form id="filters" class="filters">
-<div><label for="business-filter">Business type</label><select id="business-filter"><option value="">All fictional businesses</option value="realestate">Real estate</option><option value="auto">Automotive</option><option value="retail">Retail</option><option value="hotel">Hospitality</option></select></div>
-<div><label for="status-filter">Inquiry status</label><select id="status-filter"><option value="">All statuses</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="won">Won</option><option value="lost">Lost</option><option value="legacy_closed">Legacy closed — review required</option></select></div>
-<button id="apply-filters" type="submit">Apply filters</button><button id="refresh" type="button">Refresh first page</button>
-</form>
-<p id="loading" role="status" hidden>Loading inquiries…</p><p id="empty" role="status" hidden>No inquiries match these filters.</p>
-<div class="table-scroll" tabindex="0" aria-label="Inquiry table, scroll horizontally on small screens"><table><caption>Inquiries — newest created first</caption><thead><tr><th scope="col">Business</th><th scope="col">Name</th><th scope="col">Contact</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col">Details</th></tr></thead><tbody id="inquiry-rows"></tbody></table></div>
-<button id="next-page" type="button" disabled>Next page</button>
-<section id="detail-panel" hidden aria-labelledby="detail-heading">
-<h2 id="detail-heading" tabindex="-1">Inquiry details</h2>
-<dl><dt>Business</dt><dd id="detail-business"></dd><dt>Name</dt><dd id="detail-name"></dd><dt>Contact</dt><dd id="detail-contact"></dd><dt>Status</dt><dd id="detail-status"></dd><dt>Created</dt><dd id="detail-created"></dd><dt>Updated</dt><dd id="detail-updated"></dd><dt>Version</dt><dd id="detail-version"></dd></dl>
-<h3>Submitted question</h3><p id="detail-question" class="question"></p>
-<form id="status-form"><label for="status-next">Next status (allowed transitions only)</label><select id="status-next" required></select><button id="status-button" type="submit" disabled>Update status</button></form>
-<p>Won and lost inquiries may be reopened through the displayed transitions. Legacy closed inquiries require explicit won/lost classification.</p>
-<h3>Status history — newest first</h3><p id="audit-empty" hidden>No recorded status changes. Earlier history was not fabricated during migration.</p><ol id="audit-list"></ol><button id="older-history" type="button" disabled>Load older changes</button>
-</section>
-</section>
-<noscript>This local dashboard requires JavaScript. No inquiry information is embedded in this page.</noscript>
-</main><script type="module" src="/admin.js"></script>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>SlinFish — Local inquiry administration</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to administration</a>
+    <header>
+      <p class="badge">LOCAL ONLY · FICTIONAL DEMO DATA</p>
+      <h1>Inquiry administration</h1>
+      <a href="/">Return to fictional business demo</a>
+    </header>
+    <main id="main">
+      <p id="notice" role="status" aria-live="polite">
+        Checking local session…
+      </p>
+      <p id="error" role="alert"></p>
+      <section id="login-panel" hidden aria-labelledby="login-heading">
+        <h2 id="login-heading">Administrator sign in</h2>
+        <p>
+          Use the passphrase set with the private local bootstrap command. There
+          are no default credentials or public recovery links.
+        </p>
+        <form id="login-form">
+          <label for="admin-password">Administrator passphrase</label
+          ><input
+            id="admin-password"
+            type="password"
+            autocomplete="current-password"
+            autocapitalize="none"
+            spellcheck="false"
+            maxlength="128"
+            required
+          /><button id="login-button" type="submit">Sign in</button>
+        </form>
+      </section>
+      <section id="dashboard" hidden aria-labelledby="dashboard-heading">
+        <div class="toolbar">
+          <h2 id="dashboard-heading" tabindex="-1">Fictional demo inquiries</h2>
+          <button id="logout" type="button">Sign out</button>
+        </div>
+        <p>
+          One local owner can manage all four fictional businesses. Sessions
+          expire after 30 minutes idle or 8 hours absolute. Use fictional
+          information only.
+        </p>
+        <form id="filters" class="filters">
+          <div>
+            <label for="business-filter">Business type</label
+            ><select id="business-filter">
+              <option value="">All fictional businesses</option>
+              <option value="realestate">Real estate</option>
+              <option value="auto">Automotive</option>
+              <option value="retail">Retail</option>
+              <option value="hotel">Hospitality</option>
+            </select>
+          </div>
+          <div>
+            <label for="status-filter">Inquiry status</label
+            ><select id="status-filter">
+              <option value="">All statuses</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="qualified">Qualified</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+              <option value="legacy_closed">
+                Legacy closed — review required
+              </option>
+            </select>
+          </div>
+          <button id="apply-filters" type="submit">Apply filters</button
+          ><button id="refresh" type="button">Refresh first page</button>
+        </form>
+        <p id="loading" role="status" hidden>Loading inquiries…</p>
+        <p id="empty" role="status" hidden>No inquiries match these filters.</p>
+        <div
+          class="table-scroll"
+          tabindex="0"
+          aria-label="Inquiry table, scroll horizontally on small screens"
+        >
+          <table>
+            <caption>
+              Inquiries — newest created first
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Business</th>
+                <th scope="col">Name</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Status</th>
+                <th scope="col">Created</th>
+                <th scope="col">Details</th>
+              </tr>
+            </thead>
+            <tbody id="inquiry-rows"></tbody>
+          </table>
+        </div>
+        <button id="next-page" type="button" disabled>Next page</button>
+        <section id="detail-panel" hidden aria-labelledby="detail-heading">
+          <h2 id="detail-heading" tabindex="-1">Inquiry details</h2>
+          <dl>
+            <dt>Business</dt>
+            <dd id="detail-business"></dd>
+            <dt>Name</dt>
+            <dd id="detail-name"></dd>
+            <dt>Contact</dt>
+            <dd id="detail-contact"></dd>
+            <dt>Status</dt>
+            <dd id="detail-status"></dd>
+            <dt>Created</dt>
+            <dd id="detail-created"></dd>
+            <dt>Updated</dt>
+            <dd id="detail-updated"></dd>
+            <dt>Version</dt>
+            <dd id="detail-version"></dd>
+          </dl>
+          <h3>Submitted question</h3>
+          <p id="detail-question" class="question"></p>
+          <form id="status-form">
+            <label for="status-next"
+              >Next status (allowed transitions only)</label
+            ><select id="status-next" required></select
+            ><button id="status-button" type="submit" disabled>
+              Update status
+            </button>
+          </form>
+          <p>
+            Won and lost inquiries may be reopened through the displayed
+            transitions. Legacy closed inquiries require explicit won/lost
+            classification.
+          </p>
+          <h3>Status history — newest first</h3>
+          <p id="audit-empty" hidden>
+            No recorded status changes. Earlier history was not fabricated
+            during migration.
+          </p>
+          <ol id="audit-list"></ol>
+          <button id="older-history" type="button" disabled>
+            Load older changes
+          </button>
+        </section>
+      </section>
+      <noscript
+        >This local dashboard requires JavaScript. No inquiry information is
+        embedded in this page.</noscript
+      >
+    </main>
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>
