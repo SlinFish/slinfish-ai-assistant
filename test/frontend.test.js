@@ -107,3 +107,38 @@ test("frontend prevents duplicate pending submits and ignores stale business res
   assert.equal(elements.get("status").textContent, "");
   assert.equal(form.button.disabled, false);
 });
+test("chat provider failure displays safe handoff text and ignores late answers after business change", async () => {
+  const handoff = "Please contact a team member. No inquiry was sent.";
+  const elements = await page(async () => ({
+    ok: false,
+    json: async () => ({
+      message: handoff,
+      handoff: true,
+      error: "assistant_unavailable",
+    }),
+  }));
+  elements.get("question").value = "check-in";
+  await elements.get("chat").onsubmit({ preventDefault() {} });
+  assert.equal(elements.get("messages").children.at(-1).textContent, handoff);
+  let finish;
+  const delayed = await page(
+    () =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve({
+            ok: true,
+            json: async () => ({ message: "Previous business answer" }),
+          });
+      }),
+  );
+  delayed.get("question").value = "check-in";
+  const pending = delayed.get("chat").onsubmit({ preventDefault() {} });
+  delayed.get("businesses").children[1].onclick();
+  finish();
+  await pending;
+  assert.ok(
+    delayed
+      .get("messages")
+      .children.every((el) => el.textContent !== "Previous business answer"),
+  );
+});

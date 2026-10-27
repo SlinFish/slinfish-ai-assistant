@@ -3,7 +3,7 @@ import https from "node:https";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { businesses, answer, isBusiness } from "./src/businesses.js";
+import { businesses, isBusiness } from "./src/businesses.js";
 import {
   validateInquiry,
   validText,
@@ -18,6 +18,8 @@ import {
   assertCsrf,
 } from "./src/admin/auth.js";
 export { businesses, answer } from "./src/businesses.js";
+import { createChat } from "./src/chat.js";
+import { providerConfig } from "./src/provider.js";
 const publicDir = new URL("./public/", import.meta.url);
 function reply(res, status, data, type = "application/json", headers = {}) {
   res.writeHead(status, {
@@ -65,8 +67,17 @@ export function createServer({
   now = Date.now,
   rateLimit,
   adminRateLimit,
+  chatRateLimit,
+  config = providerConfig({}),
+  fetchImpl,
   tlsOptions,
 } = {}) {
+  const chat = createChat(config, fetchImpl);
+  const chatLimiter = createLimiter({
+    limit: 20,
+    globalLimit: 100,
+    ...chatRateLimit,
+  });
   const limiter = createLimiter(rateLimit);
   const loginLimiter = createLimiter({
     limit: 5,
@@ -253,6 +264,17 @@ export function createServer({
               { "Retry-After": String(retry) },
             );
         }
+        if (url.pathname === "/api/chat") {
+          const retry = chatLimiter.attempt(req.socket.remoteAddress, now());
+          if (retry)
+            return reply(
+              res,
+              429,
+              { error: "Too many chat attempts" },
+              "application/json",
+              { "Retry-After": String(retry) },
+            );
+        }
         const data = await body(req);
         if (url.pathname === "/api/chat") {
           if (
@@ -263,10 +285,8 @@ export function createServer({
             )
           )
             throw new RequestError(400, "Invalid chat request");
-          return reply(res, 200, {
-            message: answer(businesses[data.business], data.message),
-            mode: "rules-demo",
-          });
+          const result = await chat(data.business, data.message);
+          return reply(res, result.error ? 503 : 200, result);
         }
         const inquiry = validateInquiry(data);
         if (!store)
@@ -334,6 +354,7 @@ export function createServer({
   server.maxRequestsPerSocket = 100;
   const cleanup = () => {
     limiter.clear();
+    chatLimiter.clear();
     loginLimiter.clear();
     store?.close();
   };
@@ -349,10 +370,13 @@ if (
     const port = Number(process.env.PORT ?? 3000);
     if (!Number.isInteger(port) || port < 0 || port > 65535)
       throw new Error("Invalid port");
-    const server = createServer({ dbPath: process.env.INQUIRY_DB_PATH });
+    const server = createServer({
+      dbPath: process.env.INQUIRY_DB_PATH,
+      config: providerConfig(),
+    });
     server.on("error", () => {
       console.error(
-        "Unable to start local demo. Check storage configuration and port.",
+        "Unable to start local demo. Check storage, AI configuration and port.",
       );
       process.exitCode = 1;
     });
@@ -367,7 +391,7 @@ if (
     process.once("SIGTERM", stop);
   } catch {
     console.error(
-      "Unable to start local demo. Check storage configuration and port.",
+      "Unable to start local demo. Check storage, AI configuration and port.",
     );
     process.exitCode = 1;
   }
