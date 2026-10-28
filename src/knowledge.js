@@ -1,4 +1,5 @@
 import { businesses as configuredBusinesses } from "./businesses.js";
+import { retrievalMetadata } from "./retrieval.js";
 
 // Approved aliases from the grounded-AI branch. Claims remain sourced from the
 // lead-management business configurations, which retain their public API shape.
@@ -62,6 +63,28 @@ export function retrieveKnowledge(id) {
     details: business.details,
     facts: business.faqs,
   };
+}
+// Local-only interpretation metadata is never part of provider knowledge or the
+// public businesses response. All claims still use the original FAQ text.
+const localKnowledge = freeze(
+  Object.fromEntries(
+    Object.entries(businesses).map(([id, business]) => [
+      id,
+      {
+        businessId: id,
+        facts: business.faqs.map((fact) => ({
+          ...fact,
+          scopedId: `${id}:${fact.id}`,
+          retrieval: retrievalMetadata[id][fact.id],
+        })),
+      },
+    ]),
+  ),
+);
+export function retrieveLocalKnowledge(id) {
+  if (typeof id !== "string" || !Object.hasOwn(localKnowledge, id))
+    throw new Error("Unknown business");
+  return localKnowledge[id];
 }
 // Keep Unicode and digits: deleting them could turn private free-form input into
 // an apparently approved question. Only case, whitespace and final ? vary.

@@ -1,4 +1,5 @@
-import { retrieveKnowledge, demoSelection } from "./knowledge.js";
+import { retrieveKnowledge, retrieveLocalKnowledge } from "./knowledge.js";
+import { selectLocalFact } from "./retrieval.js";
 import { selectFact } from "./provider.js";
 import { GEMINI_MODEL } from "./gemini.js";
 
@@ -23,7 +24,10 @@ export function createChat(config, fetchImpl) {
     const knowledge = retrieveKnowledge(business);
     const mode = settings.provider;
     const handoff = { message: HANDOFF, handoff: true, mode, sources: [] };
-    const approvedId = demoSelection(knowledge, message);
+    const approvedId = selectLocalFact(
+      retrieveLocalKnowledge(business),
+      message,
+    ).factId;
     if (!approvedId) return handoff;
     const approved = knowledge.facts.find((fact) => fact.id === approvedId);
     try {
