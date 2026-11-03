@@ -1,7 +1,31 @@
 const $ = (id) => document.getElementById(id);
 let data = {},
   selected = "realestate",
-  generation = 0;
+  generation = 0,
+  contextHandle = "",
+  contextBusiness = "",
+  contextSequence = 0,
+  chatPending = false;
+const isContextHandle = (value) => typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
+function resetRemote(handle, business) {
+  if (isContextHandle(handle)) void post("/api/chat/reset", { business }, { "X-Chat-Context": handle }).catch(() => {});
+}
+function forgetContext() {
+  resetRemote(contextHandle, contextBusiness);
+  contextHandle = "";
+  contextBusiness = "";
+  contextSequence = 0;
+}
+function resetConversation() {
+  generation++;
+  forgetContext();
+  chatPending = false;
+  const button = $("chat").querySelector("button");
+  if (button) button.disabled = false;
+  $("question").value = "";
+  $("messages").replaceChildren();
+  bubble("Welcome! Ask about this fictional business. Please use fictional demo information only.");
+}
 function bubble(text, role = "bot") {
   const el = document.createElement("div");
   el.className = "bubble " + role;
@@ -10,7 +34,7 @@ function bubble(text, role = "bot") {
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 function render() {
-  generation++;
+  resetConversation();
   $("businesses").replaceChildren();
   for (const [id, business] of Object.entries(data)) {
     const btn = document.createElement("button");
@@ -23,20 +47,17 @@ function render() {
     $("businesses").append(btn);
   }
   $("name").textContent = data[selected].name + " · " + data[selected].sector;
-  $("messages").replaceChildren();
   $("status").textContent = "";
   $("lead").reset();
-  bubble(
-    "Welcome! Ask about this fictional business. Please use fictional demo information only.",
-  );
 }
-async function post(url, payload) {
+async function post(url, payload, headers = {}, receive) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(payload),
   });
   const result = await response.json();
+  receive?.(response);
   if (!response.ok)
     throw new Error(
       url === "/api/chat" && result.handoff === true
@@ -45,18 +66,39 @@ async function post(url, payload) {
     );
   return result;
 }
+if ($("reset-chat")) $("reset-chat").onclick = resetConversation;
 $("chat").onsubmit = async (event) => {
   event.preventDefault();
   const message = $("question").value.trim();
-  if (!message) return;
-  const current = generation;
+  if (!message || chatPending) return;
+  const current = generation, business = selected;
+  const button = $("chat").querySelector("button");
+  chatPending = true;
+  if (button) button.disabled = true;
+  const headers = { "X-Chat-Context": contextHandle || "new" };
+  if (contextHandle) headers["X-Chat-Sequence"] = String(contextSequence + 1);
   $("question").value = "";
   bubble(message, "user");
+  let receivedHandle = "", receivedSequence = 0;
   try {
-    const result = await post("/api/chat", { business: selected, message });
-    if (generation === current) bubble(result.message);
+    const result = await post("/api/chat", { business, message }, headers, (response) => {
+      receivedHandle = response.headers?.get("x-chat-context") || "";
+      receivedSequence = Number(response.headers?.get("x-chat-sequence") || 0);
+    });
+    if (generation !== current) { resetRemote(receivedHandle, business); return; }
+    if (contextHandle && contextHandle !== receivedHandle) resetRemote(contextHandle, contextBusiness);
+    contextHandle = ""; contextBusiness = ""; contextSequence = 0;
+    if (!result.handoff && isContextHandle(receivedHandle) && Number.isInteger(receivedSequence) && receivedSequence >= 1 && receivedSequence <= 6) {
+      contextHandle = receivedHandle;
+      contextBusiness = business;
+      contextSequence = receivedSequence;
+    }
+    bubble(result.message);
   } catch (error) {
-    if (generation === current) bubble(error.message || "Connection failed.");
+    if (generation === current) { forgetContext(); bubble(error.message || "Connection failed."); }
+    else resetRemote(receivedHandle, business);
+  } finally {
+    if (generation === current) { chatPending = false; if (button) button.disabled = false; }
   }
 };
 $("lead").onsubmit = async (event) => {

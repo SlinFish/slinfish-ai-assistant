@@ -1,4 +1,4 @@
-import { retrieveKnowledge, retrieveLocalKnowledge } from "./knowledge.js";
+import { retrieveKnowledge, retrieveLocalKnowledge, resolveFollowup } from "./knowledge.js";
 import { selectLocalFact } from "./retrieval.js";
 import { interpretLocalRequest } from "./intent.js";
 import { selectFact } from "./provider.js";
@@ -21,7 +21,7 @@ export function createChat(config, fetchImpl) {
       settings.timeoutMs > 30000)
   )
     throw new Error("Invalid Gemini configuration");
-  return async (business, message) => {
+  return async (business, message, topic) => {
     const knowledge = retrieveKnowledge(business);
     const mode = settings.provider;
     const handoff = { message: HANDOFF, handoff: true, mode, sources: [] };
@@ -31,7 +31,7 @@ export function createChat(config, fetchImpl) {
       selection.reason === "uncovered-input"
         ? interpretLocalRequest(localKnowledge, message).factId
         : null
-    );
+    ) ?? resolveFollowup(business, message, topic);
     if (!approvedId) return handoff;
     const approved = knowledge.facts.find((fact) => fact.id === approvedId);
     try {

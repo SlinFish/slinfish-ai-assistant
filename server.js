@@ -18,7 +18,8 @@ import {
   assertCsrf,
 } from "./src/admin/auth.js";
 export { businesses, answer } from "./src/businesses.js";
-import { createChat } from "./src/chat.js";
+import { createChat, HANDOFF } from "./src/chat.js";
+import { createTopicStore, validHandle } from "./src/context.js";
 import { providerConfig } from "./src/provider.js";
 const publicDir = new URL("./public/", import.meta.url);
 function reply(res, status, data, type = "application/json", headers = {}) {
@@ -73,6 +74,7 @@ export function createServer({
   tlsOptions,
 } = {}) {
   const chat = createChat(config, fetchImpl);
+  const safeChat = () => ({ message: HANDOFF, handoff: true, mode: config.provider, sources: [] });
   const chatLimiter = createLimiter({
     limit: 20,
     globalLimit: 100,
@@ -87,6 +89,7 @@ export function createServer({
   });
   const store = dbPath === undefined ? null : openInquiryStore(dbPath);
   const auth = createAdminAuth(store?.admin, now);
+  const topics = createTopicStore(now);
   const handler = async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
@@ -240,7 +243,7 @@ export function createServer({
         return reply(res, 200, businesses);
       if (
         req.method === "POST" &&
-        ["/api/lead", "/api/chat"].includes(url.pathname)
+        ["/api/lead", "/api/chat", "/api/chat/reset"].includes(url.pathname)
       ) {
         if (req.headers.origin) {
           const port = server.address().port;
@@ -264,7 +267,7 @@ export function createServer({
               { "Retry-After": String(retry) },
             );
         }
-        if (url.pathname === "/api/chat") {
+        if (["/api/chat", "/api/chat/reset"].includes(url.pathname)) {
           const retry = chatLimiter.attempt(req.socket.remoteAddress, now());
           if (retry)
             return reply(
@@ -276,6 +279,15 @@ export function createServer({
             );
         }
         const data = await body(req);
+        if (url.pathname === "/api/chat/reset") {
+          if (!req.headers.origin) throw new RequestError(403, "Request origin required");
+          const handle = req.headers["x-chat-context"];
+          if (!isBusiness(data.business) || Object.keys(data).length !== 1 || !validHandle(handle))
+            throw new RequestError(400, "Invalid context reset");
+          // Possession of a handle permits only discarding public topic metadata.
+          topics.reset(handle, data.business);
+          return reply(res, 200, { reset: true });
+        }
         if (url.pathname === "/api/chat") {
           if (
             !isBusiness(data.business) ||
@@ -285,8 +297,39 @@ export function createServer({
             )
           )
             throw new RequestError(400, "Invalid chat request");
-          const result = await chat(data.business, data.message);
-          return reply(res, result.error ? 503 : 200, result);
+          const handle = req.headers["x-chat-context"];
+          const sequence = req.headers["x-chat-sequence"];
+          const optedIn = handle !== undefined;
+          if ((optedIn && handle !== "new" && !validHandle(handle)) ||
+              (handle === "new" && sequence !== undefined) ||
+              (!optedIn && sequence !== undefined) ||
+              (optedIn && handle !== "new" && !/^[1-9][0-9]{0,2}$/.test(sequence ?? "")))
+            throw new RequestError(400, "Invalid context headers");
+          let record;
+          if (optedIn && handle !== "new") {
+            const lease = topics.begin(handle, data.business, Number(sequence));
+            if (lease.status === "busy") throw new RequestError(409, "Chat request already pending");
+            if (lease.status !== "ok") return reply(res, 200, safeChat(), "application/json", { "X-Chat-Context": "" });
+            record = lease.record;
+          }
+          // Pass only an allowlisted topic snapshot; never request headers or a handle.
+          const topic = record ? { businessId: record.businessId, factId: record.factId,
+            followupType: record.followupType, knowledgeRevision: record.knowledgeRevision } : undefined;
+          let result;
+          try { result = await chat(data.business, data.message, topic); }
+          catch (error) { topics.invalidate(handle); throw error; }
+          const headers = optedIn ? { "X-Chat-Context": "" } : {};
+          if (result.handoff || req.aborted || res.destroyed) topics.invalidate(handle);
+          else if (optedIn) {
+            const factId = result.sources[0].split(":")[1];
+            const completed = topics.finish(record, data.business, factId);
+            if (!completed.valid) result = { ...safeChat(), ...(completed.capacity ? { error: "assistant_unavailable" } : {}) };
+            else {
+              headers["X-Chat-Context"] = completed.handle;
+              headers["X-Chat-Sequence"] = String(completed.sequence);
+            }
+          }
+          return reply(res, result.error ? 503 : 200, result, "application/json", headers);
         }
         const inquiry = validateInquiry(data);
         if (!store)
@@ -325,6 +368,8 @@ export function createServer({
       const [file, type] = assets[url.pathname];
       return reply(res, 200, await readFile(new URL(file, publicDir)), type);
     } catch (error) {
+      if (req.url?.split("?")[0] === "/api/chat" && !(error instanceof RequestError && error.status === 409))
+        topics.invalidate(req.headers["x-chat-context"]);
       if (!res.headersSent && !res.destroyed) {
         const status = error instanceof RequestError ? error.status : 500;
         reply(
@@ -346,6 +391,7 @@ export function createServer({
       ? https.createServer(tlsOptions, handler)
       : http.createServer(handler);
   } catch (error) {
+    topics.clear();
     store?.close();
     throw error;
   }
@@ -355,6 +401,7 @@ export function createServer({
   const cleanup = () => {
     limiter.clear();
     chatLimiter.clear();
+    topics.clear();
     loginLimiter.clear();
     store?.close();
   };

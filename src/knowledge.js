@@ -1,5 +1,6 @@
 import { businesses as configuredBusinesses } from "./businesses.js";
 import { retrievalMetadata } from "./retrieval.js";
+import { createHash } from "node:crypto";
 
 // Approved aliases from the grounded-AI branch. Claims remain sourced from the
 // lead-management business configurations, which retain their public API shape.
@@ -96,4 +97,20 @@ export function demoSelection(knowledge, message) {
       fact.questions.some((q) => normalize(q) === normalize(message)),
     )?.id ?? null
   );
+}
+
+// Local follow-up policy is deliberately separate from provider knowledge.
+const followups = freeze({ hotel: { booking: {
+  type: "booking-information", questions: ["What information do you need from me?"],
+} } });
+export const knowledgeRevision = createHash("sha256").update(JSON.stringify({ businesses, followups })).digest("hex");
+export function topicFor(business, factId) {
+  return Object.hasOwn(followups, business) && Object.hasOwn(followups[business], factId)
+    ? followups[business][factId].type : null;
+}
+export function resolveFollowup(business, message, topic) {
+  if (!topic || topic.businessId !== business || topic.knowledgeRevision !== knowledgeRevision) return null;
+  if (topicFor(business, topic.factId) !== topic.followupType || !topic.followupType) return null;
+  return followups[business][topic.factId].questions.some((question) => normalize(question) === normalize(message))
+    ? topic.factId : null;
 }
