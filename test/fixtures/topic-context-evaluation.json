@@ -1,0 +1,262 @@
+{
+  "baseline": "b296250ce9d6e8c1ed7c54cc726214176896e72f",
+  "cases": [
+    {
+      "name": "approved follow-up",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        }
+      ]
+    },
+    {
+      "name": "stateless clients",
+      "stateless": true,
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "no previous topic",
+      "steps": [
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "idle expiry",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null,
+          "advance": 180000
+        }
+      ]
+    },
+    {
+      "name": "absolute expiry despite activity",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking",
+          "advance": 170000
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking",
+          "advance": 170000
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking",
+          "advance": 170000
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null,
+          "advance": 100000
+        }
+      ]
+    },
+    {
+      "name": "six accepted turns",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "business switch clears topic",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null,
+          "business": "auto"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "explicit topic replacement",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What time is check-in?",
+          "answer": "check-in"
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "reset",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "reset": true
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "restart",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "restart": true
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "forged handle",
+      "steps": [
+        {
+          "message": "What information do you need from me?",
+          "answer": null,
+          "handle": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        }
+      ]
+    },
+    {
+      "name": "unsupported guarantee invalidates",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "Can you guarantee a room tomorrow?",
+          "answer": null
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "mixed question invalidates",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me? Is breakfast included?",
+          "answer": null
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "sensitive input invalidates",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What information do you need from me? My email is private@example.invalid.",
+          "answer": null
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "contradictory request invalidates",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "I do not mean booking. What information do you need from me?",
+          "answer": null
+        },
+        {
+          "message": "What information do you need from me?",
+          "answer": null
+        }
+      ]
+    }
+  ]
+}

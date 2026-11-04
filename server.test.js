@@ -1,1 +1,10 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {answer,businesses} from './server.js';test('answers approved FAQ',()=>assert.match(answer(businesses.hotel,'What is check-in?'),/2 PM/));test('does not invent unknown answer',()=>assert.match(answer(businesses.hotel,'Do you have a helipad?'),/team member/));
+import test from "node:test";
+import assert from "node:assert/strict";
+import { answer, businesses } from "./server.js";
+test("answers approved FAQ", () =>
+  assert.match(answer(businesses.hotel, "What is check-in?"), /2 PM/));
+test("does not invent unknown answer", () =>
+  assert.match(
+    answer(businesses.hotel, "Do you have a helipad?"),
+    /team member/,
+  ));
