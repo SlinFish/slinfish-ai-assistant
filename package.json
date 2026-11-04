@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "start:hotel-chat": "node public-hotel-chat.js"
   },
   "engines": {
     "node": ">=24.0.0 <25"
