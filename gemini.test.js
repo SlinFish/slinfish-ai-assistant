@@ -93,7 +93,7 @@ test("Gemini uses official REST endpoint and header key with only scoped knowled
       );
       assert.deepEqual(payload.generationConfig, {
         maxOutputTokens: 1024,
-        thinkingConfig: { thinkingLevel: "MINIMAL" },
+        thinkingConfig: { thinkingLevel: "LOW" },
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
