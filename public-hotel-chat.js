@@ -1,6 +1,7 @@
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { createChat, HANDOFF } from "./src/chat.js";
 import { createTopicStore, validHandle } from "./src/context.js";
 import { createLimiter } from "./src/inquiries/rate-limit.js";
@@ -96,7 +97,7 @@ export function createPublicHotelChatServer({ bridgeToken, now = Date.now, fetch
   server.on("close", () => { topics.clear(); limiter.clear(); });
   return server;
 }
-if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(`file://${process.argv[1].replaceAll("\\", "/")}`))) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const port = Number(process.env.PORT || 3000);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid port");
