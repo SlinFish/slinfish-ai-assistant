@@ -99,10 +99,45 @@ export function demoSelection(knowledge, message) {
   );
 }
 
-// Local follow-up policy is deliberately separate from provider knowledge.
-const followups = freeze({ hotel: { booking: {
-  type: "booking-information", questions: ["What information do you need from me?"],
-} } });
+// Contextual turns are deliberately an exact, business-scoped allowlist.
+// No free-form keyword or similarity matching is permitted.
+const followups = freeze({
+  hotel: {
+    booking: {
+      type: "booking-information",
+      questions: [
+        "What information do you need from me?",
+        "What details should I provide?",
+        "What do you need from me?",
+        "And what information is required?",
+      ],
+      transitions: {
+        "What about check-in?": "check-in",
+      },
+    },
+  },
+  auto: {
+    service: {
+      type: "service-information",
+      questions: [],
+      transitions: { "What about the cost?": "price" },
+    },
+  },
+  retail: {
+    stock: {
+      type: "stock-information",
+      questions: [],
+      transitions: { "And delivery?": "delivery" },
+    },
+  },
+  realestate: {
+    viewing: {
+      type: "viewing-information",
+      questions: ["How do I arrange that?"],
+      transitions: {},
+    },
+  },
+});
 export const knowledgeRevision = createHash("sha256").update(JSON.stringify({ businesses, followups })).digest("hex");
 export function topicFor(business, factId) {
   return Object.hasOwn(followups, business) && Object.hasOwn(followups[business], factId)
@@ -111,6 +146,8 @@ export function topicFor(business, factId) {
 export function resolveFollowup(business, message, topic) {
   if (!topic || topic.businessId !== business || topic.knowledgeRevision !== knowledgeRevision) return null;
   if (topicFor(business, topic.factId) !== topic.followupType || !topic.followupType) return null;
-  return followups[business][topic.factId].questions.some((question) => normalize(question) === normalize(message))
-    ? topic.factId : null;
+  const policy = followups[business][topic.factId];
+  if (policy.questions.some(question => normalize(question) === normalize(message))) return topic.factId;
+  const transition = Object.entries(policy.transitions).find(([question]) => normalize(question) === normalize(message));
+  return transition?.[1] ?? null;
 }

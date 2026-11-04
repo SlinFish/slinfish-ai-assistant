@@ -1,0 +1,241 @@
+{
+  "phase": "AI-2B.3A",
+  "baseline": "5473e69d335ae23ca4b985924e03adfd636ed7d0",
+  "purpose": "Prospective evaluation; outcomes are targets, not claims of current implementation.",
+  "cases": [
+    {
+      "name": "booking follow-up alternative details",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": "booking"
+        }
+      ]
+    },
+    {
+      "name": "booking follow-up alternative what need",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What do you need from me?",
+          "answer": "booking"
+        }
+      ]
+    },
+    {
+      "name": "booking follow-up polite wording",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "And what information is required?",
+          "answer": "booking"
+        }
+      ]
+    },
+    {
+      "name": "explicit switch to check-in",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What about check-in?",
+          "answer": "check-in"
+        }
+      ]
+    },
+    {
+      "name": "switch replaces previous follow-up",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What time is check-in?",
+          "answer": "check-in"
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "automotive pricing topic switch",
+      "business": "auto",
+      "steps": [
+        {
+          "message": "What services do you offer?",
+          "answer": "service"
+        },
+        {
+          "message": "What about the cost?",
+          "answer": "price"
+        }
+      ]
+    },
+    {
+      "name": "retail delivery topic switch",
+      "business": "retail",
+      "steps": [
+        {
+          "message": "Is this item in stock?",
+          "answer": "stock"
+        },
+        {
+          "message": "And delivery?",
+          "answer": "delivery"
+        }
+      ]
+    },
+    {
+      "name": "real-estate viewing follow-up",
+      "business": "realestate",
+      "steps": [
+        {
+          "message": "How do I arrange a viewing?",
+          "answer": "viewing"
+        },
+        {
+          "message": "How do I arrange that?",
+          "answer": "viewing"
+        }
+      ]
+    },
+    {
+      "name": "unsupported guarantee invalidates new follow-up",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "Can you guarantee a room tomorrow?",
+          "answer": null
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "sensitive details never rescued",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What details should I provide? My card number is 4111111111111111.",
+          "answer": null
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "reset clears expanded follow-up",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "reset": true
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "business switch clears expanded follow-up",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "switchBusiness": "auto"
+        },
+        {
+          "switchBusiness": "hotel"
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "no topic cannot infer follow-up",
+      "steps": [
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "ambiguous referent safely hands off",
+      "business": "auto",
+      "steps": [
+        {
+          "message": "What services do you offer?",
+          "answer": "service"
+        },
+        {
+          "message": "Can you explain that one?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "contradictory booking follow-up denied",
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "I am not booking. What details should I provide?",
+          "answer": null
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    },
+    {
+      "name": "stateless clients remain stateless",
+      "stateless": true,
+      "steps": [
+        {
+          "message": "How do I book a room?",
+          "answer": "booking"
+        },
+        {
+          "message": "What details should I provide?",
+          "answer": null
+        }
+      ]
+    }
+  ]
+}
