@@ -4,11 +4,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createServer } from "../server.js";
 import { HANDOFF } from "../src/chat.js";
 import { retrieveKnowledge } from "../src/knowledge.js";
 
-const fixture = JSON.parse(readFileSync(new URL("../test/fixtures/conversation-evaluation.json", import.meta.url)));
+const fixtureBytes = readFileSync(new URL("../test/fixtures/conversation-evaluation.json", import.meta.url));
+assert.equal(
+  createHash("sha256").update(fixtureBytes).digest("hex"),
+  "306dee0d4eed1f3d2e6079d95f073cb0d1cc218ea6ff64b31488283b06995a39",
+  "AI-2B.3A evaluation fixture changed after baseline freeze",
+);
+const fixture = JSON.parse(fixtureBytes);
 assert.equal(fixture.phase, "AI-2B.3A");
 assert.equal(fixture.cases.length, 16);
 
